@@ -175,6 +175,7 @@ int main(){
             if (score > high_score) high_score = score;
             draw_high_score(high_score);
             printf("Test");
+            
             show_fps();
             draw_ground();
         }
