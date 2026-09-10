@@ -56,16 +56,6 @@ typedef struct
     Texture2D frames[];
 } Animation;
 
-// typedef struct 
-// {
-//     Animation bird;
-//     Animation pipes; // animation struct can hold assets and total_size together. It can be reused
-//     Animation background;
-//     Animation numbers; // Use this to draw score
-
-//     Texture2D ground;
-//     Texture2D game_over_text;
-// } Assets;
 
 typedef struct
 {
@@ -101,7 +91,6 @@ typedef enum {
 
 Sfx sfx;
 Scale scale;
-// Assets textures;
 GameState gamestate = STATE_MENU;
 
 void show_fps(void);
