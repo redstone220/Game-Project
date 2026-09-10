@@ -173,7 +173,6 @@ int main(){
             score = update_score(score, pos_x, total_pipes, pipes);
             draw_score(score);
             if (score > high_score) high_score = score;
-            draw_high_score(high_score);
             
             show_fps();
             draw_ground();
