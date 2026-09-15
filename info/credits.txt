@@ -1,2 +1,6 @@
-Assets from github - 
-Fon from - https://www.dafont.com/pix32.font
+Assets from github - https://github.com/samuelcust/flappy-bird-assets
+Font from - https://www.dafont.com/pix32.font
+
+Code by - 
+    Mohammad Shahriar Ibne Alam
+    Eftehar Ahmed Shifat

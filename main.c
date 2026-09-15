@@ -51,7 +51,7 @@ typedef struct
 {
     int total_frames;
     Texture2D frames[3];
-} Animation;
+} BirdAnimation;
 
 typedef struct 
 {
@@ -63,7 +63,7 @@ typedef struct
     Texture2D game_over_txt;
     Texture2D begin_menu;
 
-    Animation bird[3];
+    BirdAnimation bird[3];
 } Assets;
 
 typedef struct 
@@ -100,6 +100,7 @@ typedef struct {
     Vector2 ground;
     Vector2 number;
     Vector2 game_over_txt;
+    Vector2 menu;
 } Scale;
 
 typedef enum {
@@ -222,7 +223,7 @@ int main(){
                 dt = 0;
                 gamestate = STATE_MENU;
                 animate = 0;
-                bird_rotation = -30; 
+                bird_rotation = 0; 
             }
         }
         show_fps();
@@ -238,6 +239,7 @@ int main(){
 
 
 void show_fps(void){
+    // for debugging. Also looks cool
     int fps = GetFPS();
     char fps_info[50];
     snprintf(fps_info, sizeof(fps_info), "FPS = %d", fps);
@@ -273,24 +275,9 @@ int load_and_save_high_score(int high_score, char load_or_save){
 
 
 void load_textures(void){
-    // green_pipe = LoadTexture("sprites/pipe-green.png");
-
-    // bird_frames[0] = LoadTexture("sprites/yellowbird-downflap.png");
-    // bird_frames[1] = LoadTexture("sprites/yellowbird-midflap.png");
-    // bird_frames[2] = LoadTexture("sprites/yellowbird-upflap.png");
-
-
-    // ground = LoadTexture("sprites/base.png");
-
-    // game_over_text = LoadTexture("sprites/gameover.png");
-    // begin_menu = LoadTexture("sprites/message.png");
-
-    // for (int i = 0; i < 10; i++){
-    //     char file_name[20];
-    //     snprintf(file_name, sizeof(file_name), "sprites/%d.png", i);
-    //     numbers[i] = LoadTexture(file_name);
-    // }
-
+    /*
+        Responsible for loading all texture. Must be called after InitWindow()
+    */
     assets.background[0] = LoadTexture("sprites/background-day.png");
     assets.background[1] = LoadTexture("sprites/background-night.png");
 
@@ -305,7 +292,7 @@ void load_textures(void){
         assets.numbers[i] = LoadTexture(file_name);
     }
 
-    Animation bird1 = {
+    BirdAnimation bird1 = {
         .frames = {
             LoadTexture("sprites/yellowbird-downflap.png"),
             LoadTexture("sprites/yellowbird-midflap.png"),
@@ -314,7 +301,7 @@ void load_textures(void){
         .total_frames = 3
     };
 
-    Animation bird2 = {
+    BirdAnimation bird2 = {
         .frames = {
             LoadTexture("sprites/bluebird-downflap.png"),
             LoadTexture("sprites/bluebird-midflap.png"),
@@ -323,7 +310,7 @@ void load_textures(void){
         .total_frames = 3
     };
 
-    Animation bird3 = {
+    BirdAnimation bird3 = {
         .frames = {
             LoadTexture("sprites/redbird-downflap.png"),
             LoadTexture("sprites/redbird-midflap.png"),
@@ -342,6 +329,9 @@ void load_textures(void){
 
 
 void set_current_asset(void){
+    /*
+        initiate asset handeler struct.
+    */
     current_assets.background = 1; // 0-day 1-night
     current_assets.ground = 0; // 0-regular
     current_assets.bird = 1; // 0-yellow 1-blue 2-red
@@ -350,6 +340,9 @@ void set_current_asset(void){
 
 
 Sfx load_sound(void){
+    /*
+        Responsible for loading all sounds. Must be called after InitAudioDevice()
+    */
     Sfx s = {
        .death = LoadSound("audio/die.wav"),
        .flap = LoadSound("audio/wing.wav"),
@@ -362,19 +355,26 @@ Sfx load_sound(void){
 
 
 Scale set_scales(void){
+    /*
+        Single source of truth for all scale. Used to dynamically scale assest without changing a lot of code.
+    */
     Scale s = {
         .bird = (Vector2){2.0f, 2.0f},
         .pipe = (Vector2){1.5f, 2.0f},
         .background = (Vector2){(float)HEIGHT/(float)assets.background[0].height, (float)HEIGHT/(float)assets.background[0].height}, // fills up the whole height
         .ground = {1.0f, 1.0f},
         .number = {1.5f, 1.5f},
-        .game_over_txt = {2.0f, 2.0f}
+        .game_over_txt = {2.0f, 2.0f},
+        .menu = {2.0f, 2.0f}
     };
     return s;
 }
 
 
 void free_memory(void){
+    /*
+        Frees all textures and sound from VRAM
+    */
     UnloadTexture(assets.background[0]);
     UnloadTexture(assets.background[1]);
 
@@ -404,6 +404,9 @@ void free_memory(void){
 
 
 void init_pipes(Pipe pipes[], int total_pipes){
+    /*
+        set-up pipe for the first time
+    */
     for (int i = 0; i < total_pipes; i++){
         pipes[i].x =  WIDTH + (i+1)*pipe_horizontal_distance;
         // pipes[i].y = rand() % (HEIGHT - 400) + 50; // bar should be between 50 and (WIDTH-350) as bottom portion is ground
@@ -414,6 +417,9 @@ void init_pipes(Pipe pipes[], int total_pipes){
 
 
 void draw_background(void){
+    /*
+        draws backgground. If animate is on, meves background to left.
+    */
     Texture2D background = assets.background[current_assets.background];
     float width = background.width;
     float height = background.height;
@@ -442,6 +448,9 @@ void draw_background(void){
 
 
 void draw_ground(void){
+    /*
+        draws and moves ground. ground velocity is same as pipe velocity
+    */
     Texture2D ground = assets.ground[current_assets.ground];
     float width = ground.width;
     float height = ground.height;
@@ -469,6 +478,9 @@ void draw_ground(void){
 
 
 void draw_bird(int x, int y, float velocity){
+    /*
+        draws bird. If animate is on animates bird. Handels rotation. Draws bird hitbox.
+    */
     float bird_scale = scale.bird.x;
     int bird_animation_frame = assets.bird[current_assets.bird].total_frames;
     // Texture2D bird_frames[] = assets.bird[current_assets.bird].frames;
@@ -509,7 +521,10 @@ void draw_bird(int x, int y, float velocity){
 }
 
 void menu(void){
-    float menu_scale = 2;
+    /*
+        draws main menu.
+    */
+    float menu_scale = scale.menu.x;
     DrawTexturePro(
         assets.begin_menu,
         (Rectangle){0.0f, 0.0f, assets.begin_menu.width, assets.begin_menu.height},
@@ -518,6 +533,21 @@ void menu(void){
         0.0f,
         WHITE
     );
+
+    int bird_position = 470; // from top. horizontally aligned in center
+    float bird_scale = scale.bird.x;
+    int bird_animation_frame = assets.bird[current_assets.bird].total_frames;
+
+    float animation_time = 0.4; // total time to finish an animation
+    int frame_no = 1;
+    frame_no = (int)(GetTime()/(animation_time/bird_animation_frame)) % bird_animation_frame;
+
+    Texture2D bird = assets.bird[current_assets.bird].frames[frame_no];
+    Rectangle source =  {0.0f, 0.0f, (float)bird.width, (float)bird.height};
+    Rectangle dest = {(float)WIDTH/2, (float)bird_position, bird.width * bird_scale, bird.height * bird_scale};
+    Vector2 origin = {bird.width*bird_scale/2, bird.height*bird_scale/2}; // ancoring to the middle point
+
+    DrawTexturePro(bird, source, dest, origin, bird_rotation, WHITE);
 }
 
 void update_velocity(float *velocity, float dt){
