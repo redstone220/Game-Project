@@ -1,0 +1,7 @@
+shift all scales to scale struct [Done]
+shift all global Texture to struct [Done]
+Store high score in a file and use it. move it to a function [Done]
+
+Add a main menu
+Add settings
+Use custom font for drawing text
