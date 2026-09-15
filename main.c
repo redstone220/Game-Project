@@ -2,7 +2,11 @@
 #include <stdlib.h>
 #include <time.h>
 #include <math.h>
+
 #include "raylib.h"
+
+#define RAYGUI_IMPLEMENTATION
+#include "raygui.h"
 
 #define DEBUG 0
 #define HITBOX 0
@@ -573,7 +577,7 @@ void move_pipe(Pipe pipes[], int total_pipes, float dt){
     int move = -1;
     for (int i = 0; i < total_pipes; i++){
         pipes[i].x -= game_speed * dt;
-        if (pipes[i].x + assets.pipe[0].width*2 <= 0) {
+        if (pipes[i].x + (assets.pipe[0].width * scale.pipe.x) <= 0) {
             move = i;
         }
         if (pipes[i].x > furthest) furthest = pipes[i].x;
