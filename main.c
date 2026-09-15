@@ -17,11 +17,11 @@
 
 
 // THIS AREA HOLDS SETTINGS VARIABLES
-float gravity = 1200;
-const float pipe_vertical_distance = 200;
-const float pipe_horizontal_distance = 400;
+const float gravity = 1200;
+const float pipe_vertical_distance = 200; // how much distance pipes are apart vertically
+const float pipe_horizontal_distance = 400; // how much distance pipes are apart horizontally
 const float flap_velocity = -450 ; // upward. That's why -ve
-float game_speed = 300;
+float game_speed = 300; // pipe speed. 
 float background_speed = 70; // for parallex effect
 
 float dt = 0; // I hate passing it to every function
@@ -31,30 +31,28 @@ int inputPressed = 0; // global input tracking. updated in main loops
 float base_poition = 0; // for parallex
 float backgroung_position = 0; // for parallex
 
-float bird_rotation = 0;
-float rotation_speed = 75;
+float bird_rotation = 0; // current bird rotation. Updated in draw bird
+float rotation_speed = 75; // how much to rotate per second
 
 int animate = 0; // 1 - animates bird, base, backgrooound, controlrotation. 0 - stop all animation and rotation
 int sound_on = 1; // 1 - sound on. 0 - sound off
 
+typedef struct 
+{
+    Font determination; // konwing that the mouse might come out one day for the cheese fills you up with determination
+} FontList;
 
-// LOADING TEXTURES (should've used a struct)
-// Texture2D green_pipe;
-// int bird_animation_frame = 3;
-// Texture2D bird_frames[3]; // sadly global variable has to be defined this way
-// Texture2D ground;
-// Texture2D game_over_text;
-// Texture2D begin_menu;
-// Texture2D numbers[10];
 
 typedef struct
 {
+    // holds all frames and total frame count for each bird
     int total_frames;
     Texture2D frames[3];
 } BirdAnimation;
 
 typedef struct 
 {
+    // Bundles texture together
     Texture2D background[2];
     Texture2D ground[1];
     Texture2D pipe[2];
@@ -68,12 +66,12 @@ typedef struct
 
 typedef struct 
 {
-    int background;
-    int ground;
-    int bird;
-    int pipe;
+    // which asset to load
+    int background; // 0-day 1-night
+    int ground; // 0-regular
+    int bird; // 0-yellow 1-blue 2-red
+    int pipe; // 0-green 1-red
 } CurrentAssets;
-
 
 typedef struct
 {
@@ -107,19 +105,22 @@ typedef enum {
     STATE_MENU,
     STATE_PLAYING,
     STATE_GAMEOVER,
-    STATE_END
+    STATE_END,
+    STATE_CUSTOMIZATION
 } GameState;
 
 Sfx sfx;
 Scale scale;
 Assets assets;
+FontList font;
 CurrentAssets current_assets;
-GameState gamestate = STATE_MENU;
+GameState gamestate = STATE_CUSTOMIZATION;
 
 void show_fps(void);
 void load_textures(void);
 Sfx load_sound(void);
 Scale set_scales(void);
+void load_fonts(void);
 void set_current_asset(void);
 void menu(void);
 void free_memory(void);
@@ -138,6 +139,7 @@ void draw_game_over(void);
 void init_pipes(Pipe pipes[], int total_pipes);
 int load_and_save_high_score(int high_score, char load_or_save);
 void draw_game_over_score(int score, int high_score);
+void draw_text_outlined(Font font, const char *text, Vector2 position, Vector2 origin, float fontSize, float spacing, Color textColor, Color outlineColor, float outlineThickness);
  
 int main(){
     InitWindow(WIDTH, HEIGHT, "Flappy Bird");
@@ -151,9 +153,9 @@ int main(){
     
     load_textures();
     set_current_asset();
+    load_fonts();
     sfx = load_sound();
     scale = set_scales();
-    
 
     // THIS AREA HOLDS VARIABLES FOR BIRD
     float pos_x = WIDTH * 0.212;
@@ -226,6 +228,10 @@ int main(){
                 bird_rotation = 0; 
             }
         }
+        else if (gamestate == STATE_CUSTOMIZATION){
+            
+        }
+
         show_fps();
         EndDrawing();
     }
@@ -328,14 +334,19 @@ void load_textures(void){
 }
 
 
+void load_fonts(){
+    font.determination = LoadFontEx("fonts/determination/determination.ttf", 250, NULL, 0);
+}
+
+
 void set_current_asset(void){
     /*
         initiate asset handeler struct.
     */
-    current_assets.background = 1; // 0-day 1-night
+    current_assets.background = 0; // 0-day 1-night
     current_assets.ground = 0; // 0-regular
-    current_assets.bird = 1; // 0-yellow 1-blue 2-red
-    current_assets.pipe = 1; // 0-green 1-red
+    current_assets.bird = 0; // 0-yellow 1-blue 2-red
+    current_assets.pipe = 0; // 0-green 1-red
 }
 
 
@@ -364,7 +375,7 @@ Scale set_scales(void){
         .background = (Vector2){(float)HEIGHT/(float)assets.background[0].height, (float)HEIGHT/(float)assets.background[0].height}, // fills up the whole height
         .ground = {1.0f, 1.0f},
         .number = {1.5f, 1.5f},
-        .game_over_txt = {2.0f, 2.0f},
+        .game_over_txt = {2.5f, 2.5f},
         .menu = {2.0f, 2.0f}
     };
     return s;
@@ -400,6 +411,8 @@ void free_memory(void){
     UnloadSound(sfx.flap);
     UnloadSound(sfx.hit);
     UnloadSound(sfx.point);
+
+    UnloadFont(font.determination);
 }
 
 
@@ -520,6 +533,7 @@ void draw_bird(int x, int y, float velocity){
     DrawTexturePro(bird, source, dest, origin, bird_rotation, WHITE);
 }
 
+
 void menu(void){
     /*
         draws main menu.
@@ -534,7 +548,11 @@ void menu(void){
         WHITE
     );
 
-    int bird_position = 470; // from top. horizontally aligned in center
+    float swing_speed = 4.0f;       // How fast the bird swings up and down
+    float swing_amplitude = 15.0f;  // How far it moves from the center (10px up, 10px down)
+    float base_position = 460.0f;   // The center point of the hover
+    float bird_position = base_position + (sin(GetTime() * swing_speed) * swing_amplitude);
+
     float bird_scale = scale.bird.x;
     int bird_animation_frame = assets.bird[current_assets.bird].total_frames;
 
@@ -549,6 +567,7 @@ void menu(void){
 
     DrawTexturePro(bird, source, dest, origin, bird_rotation, WHITE);
 }
+
 
 void update_velocity(float *velocity, float dt){
     // uses v = u + gt to get velocity. If key pressed velocity instantly changes  to flap_velocity
@@ -571,6 +590,7 @@ void move_bird(float *pos_y, float velocity, float dt){
 
 
 void draw_pipes(Pipe pipes[], int total_pipes){
+    // Draws pipe in the pipes list
     float vertical_scale = scale.pipe.y;
     float horizontal_scale = scale.pipe.x;
 
@@ -603,6 +623,8 @@ void draw_pipes(Pipe pipes[], int total_pipes){
 
 
 void move_pipe(Pipe pipes[], int total_pipes, float dt){
+    // moves pipes to the left. Uses game_speed as pipe velocity. Recycles pipes that are out of screen
+    // (Also draws debug rect )
     float furthest = 0;
     int move = -1;
     for (int i = 0; i < total_pipes; i++){
@@ -622,6 +644,9 @@ void move_pipe(Pipe pipes[], int total_pipes, float dt){
 
 
 void update_score(int *score, float bird_x, int total_pipes, Pipe pipes[]){
+    /*
+        updates score. (Also changes game velocity after scoring-Todo)
+    */
     for (int i = 0; i < total_pipes; i++){
         if (pipes[i].x <= bird_x && !pipes[i].passed){
             *score += 1;
@@ -633,11 +658,16 @@ void update_score(int *score, float bird_x, int total_pipes, Pipe pipes[]){
 
 
 void draw_score(int score) {
+    /*
+        uses number textures to draw score. update the score_height to change position. Aligned at center. 
+        Update digit_scale to change scale
+    */
+    int score_height = 30; // where to draw. reffered from top
+    float digit_scale = scale.number.x; // scale
+
     int digits[10];
     int count = 0;
     int temp = score;
-
-    int score_height = 30; // where to draw. reffered from top
 
     if (temp == 0) {
         digits[count++] = 0;
@@ -648,9 +678,7 @@ void draw_score(int score) {
         }
     }
 
-    float digit_scale = scale.number.x;
     float total_width = 0.0f; 
-
     for (int i = count - 1; i >= 0; i--) {
         int digit = digits[i];
         total_width += assets.numbers[digit].width * digit_scale;
@@ -677,6 +705,7 @@ void draw_score(int score) {
 
 
 void draw_high_score(int high_score){
+    // used to draw high score. (replaced with game over score)
     char high_score_string[20];
     snprintf(high_score_string, sizeof(high_score_string), "High Score = %d", high_score);
     DrawText(high_score_string, 0, 50, 30, RED);
@@ -684,15 +713,55 @@ void draw_high_score(int high_score){
 
 
 void draw_game_over_score(int score, int high_score){
-    int game_over_height = 100; // change in draw_gamw_over() if changed here
+    /*
+        draws score and high_score in state end
+    */
+    int game_over_height = 120; // change in draw_game_over() if changed here.
 
+    float score_font_size = 130;
+    float high_score_font_size = 100;
+    float score_spacing = 2.0f;
+    float high_score_spacing = 1.75;
+
+    // draws the score
     char score_string[50];
     snprintf(score_string, sizeof(score_string), "Score = %d", score);
-    DrawText(score_string, WIDTH/2 - 100, game_over_height + 100, 30, RED);
 
+    Vector2 score_text_size = MeasureTextEx(font.determination, score_string, score_font_size, score_spacing);
+    Vector2 score_ancor = {score_text_size.x/2, score_text_size.y/2}; // ancoring to center point
+    
+    draw_text_outlined(
+        font.determination,
+        score_string,
+        (Vector2){WIDTH/2, game_over_height + 150},
+        score_ancor,
+        score_font_size,
+        score_spacing,
+        GetColor(0xbd1748aa),
+        (Color){50, 50, 50, 255},
+        // WHITE,
+        3.2
+    );
+
+    // draws the high_score
     char high_score_string[50];
     snprintf(high_score_string, sizeof(high_score_string), "High Score = %d", high_score);
-    DrawText(high_score_string, WIDTH/2 - 100, game_over_height + 150, 30, RED);
+    
+    Vector2 high_score_text_size = MeasureTextEx(font.determination, high_score_string, high_score_font_size, high_score_spacing);
+    Vector2 high_score_ancor = {high_score_text_size.x/2, high_score_text_size.y/2}; // ancoring to center point
+    
+    draw_text_outlined(
+        font.determination,
+        high_score_string,
+        (Vector2){WIDTH/2, game_over_height + 265},
+        high_score_ancor,
+        high_score_font_size,
+        high_score_spacing,
+        GetColor(0xbd1748aa),
+        (Color){50, 50, 50, 255},
+        // WHITE,
+        3.2
+    );
 }
 
 
@@ -725,7 +794,8 @@ int check_death(float pos_x, float pos_y, Pipe pipes[], int total_pipes){
 
 
 void draw_game_over(void){
-    int game_over_height = 100; // change in draw_game_over_score()
+    // draws game over from texture
+    int game_over_height = 120; // change in draw_game_over_score()
 
     float game_over_scale = scale.game_over_txt.x;
     DrawTexturePro(
@@ -736,4 +806,24 @@ void draw_game_over(void){
         0.0f,
         WHITE
     );
+}
+
+
+void draw_text_outlined(Font font, const char *text, Vector2 position, Vector2 origin, float fontSize, float spacing, Color textColor, Color outlineColor, float outlineThickness) {
+    // Draw the outline by shifting the text in 8 directions (Up, Down, Left, Right, and Diagonals)
+    Vector2 offsets[8] = {
+        {-1, 0}, {1, 0}, {0, -1}, {0, 1},   // Up, Down, Left, Right
+        {-1, -1}, {1, -1}, {-1, 1}, {1, 1}  // Diagonals
+    };
+
+    for (int i = 0; i < 8; i++) {
+        Vector2 offset_pos = {
+            position.x + (offsets[i].x * outlineThickness),
+            position.y + (offsets[i].y * outlineThickness)
+        };
+        DrawTextPro(font, text, offset_pos, origin, 0.0f, fontSize, spacing, outlineColor);
+    }
+
+    // Draw the main text perfectly centered on top
+    DrawTextPro(font, text, position, origin, 0.0f, fontSize, spacing, textColor);
 }
