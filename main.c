@@ -300,7 +300,7 @@ int load_and_save_high_score(int high_score, char load_or_save){
     */
     int high_score_load = 0;
     if (load_or_save == 'l'){
-        FILE *fp = fopen("high_score.txt", "r");
+        FILE *fp = fopen("saves/high_score.txt", "r");
         if (fp != NULL){
             fscanf(fp, "%d", &high_score_load);
             fclose(fp);
@@ -310,7 +310,7 @@ int load_and_save_high_score(int high_score, char load_or_save){
     }
 
     if (load_or_save == 's'){
-        FILE *high_score_file = fopen("high_score.txt", "w"); 
+        FILE *high_score_file = fopen("saves/high_score.txt", "w"); 
         if (high_score_file != NULL){
             fprintf(high_score_file, "%d", high_score);
             fclose(high_score_file);
