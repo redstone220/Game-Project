@@ -72,6 +72,8 @@ typedef struct
     Texture2D pencil;
     Texture2D sound_on;
     Texture2D sound_off;
+    Texture2D pause;
+    Texture2D play;
 } Assets;
 
 typedef struct 
@@ -112,6 +114,8 @@ typedef struct {
 
     Vector2 exit_ui;
     Vector2 ui_icon;
+    Vector2 pause_icon;
+    Vector2 play_icon;
 } Scale;
 
 typedef enum {
@@ -119,7 +123,9 @@ typedef enum {
     STATE_PLAYING,
     STATE_GAMEOVER,
     STATE_END,
-    STATE_CUSTOMIZATION
+    STATE_CUSTOMIZATION,
+    STATE_PAUSED,
+    STATE_COUNTDOWN
 } GameState;
 
 Sfx sfx;
@@ -160,6 +166,7 @@ void draw_game_over(void);
 void draw_game_over_score(int score, int high_score);
 int load_and_save_high_score(int high_score, char load_or_save);
 void draw_customization(void);
+void draw_countdown(int count);
 
 void draw_text_outlined(Font font, const char *text, Vector2 position, Vector2 origin, float fontSize, float spacing, Color textColor, Color outlineColor, float outlineThickness);
 void button(int *button_tracker, Texture2D tex, Rectangle source, Rectangle dest, Vector2 origin, float rotation, Color hover_tint);
@@ -186,6 +193,7 @@ int main(){
     float velocity = -400; // bird upward or downward velocity
 
     int score =  0; // current score
+    float countdown_timer = 0.0f; // tracks the time until play resumes
 
     // THIS AREA DEALS WITH PIPES
     int total_pipes = WIDTH/pipe_horizontal_distance + 1;
@@ -218,6 +226,12 @@ int main(){
         else if (gamestate == STATE_PLAYING){
             draw_background();
 
+            // Setup pause button dimensions to check collisions before movement updates
+            Rectangle pause_dest = {WIDTH - assets.pause.width * scale.pause_icon.x - 20, 20, assets.pause.width * scale.pause_icon.x, assets.pause.height * scale.pause_icon.x};
+            if (CheckCollisionPointRec(mouse_position, pause_dest)) {
+                inputPressed = 0;
+            }
+
             update_velocity(&velocity, dt); // passing by reference. much cleaner
             move_bird(&pos_y, velocity, dt);
             draw_bird(pos_x, pos_y, velocity);
@@ -236,6 +250,61 @@ int main(){
             if (score > high_score) high_score = score;
             
             draw_ground();
+
+            // Draw pause button
+            int pause_clicked = 0;
+            button(&pause_clicked, assets.pause, (Rectangle){0, 0, assets.pause.width, assets.pause.height}, pause_dest, (Vector2){0,0}, 0.0f, (Color){200, 200, 200, 150});
+
+            if (pause_clicked) {
+                gamestate = STATE_PAUSED;
+                animate = 0;
+            }
+        }
+        else if (gamestate == STATE_PAUSED){
+            draw_background();
+            draw_pipes(pipes, total_pipes);
+            draw_bird(pos_x, pos_y, velocity);
+            draw_score(score);
+            draw_ground();
+
+            // Dim the screen slightly for visual feedback
+            DrawRectangle(0, 0, WIDTH, HEIGHT, (Color){0, 0, 0, 100});
+
+            int unpaused = 0;
+            float icon_scale = scale.play_icon.x;
+            Rectangle play_src = {0, 0, assets.play.width, assets.play.height};
+            Rectangle play_dest = {WIDTH/2.0f, HEIGHT/2.0f, assets.play.width * icon_scale, assets.play.height * icon_scale};
+
+            button(&unpaused, assets.play, play_src, play_dest, (Vector2){assets.play.width/2.0f, assets.play.height/2.0f}, 0.0f, (Color){200, 200, 200, 150});
+
+            if (unpaused) {
+                gamestate = STATE_COUNTDOWN;
+                countdown_timer = 3.0f; // Start 3 second countdown
+            }
+        }
+        else if (gamestate == STATE_COUNTDOWN){
+            // Keep game state frozen while counting down
+            draw_background();
+            draw_pipes(pipes, total_pipes);
+            draw_bird(pos_x, pos_y, velocity);
+            draw_score(score);
+            draw_ground();
+
+            // Dim screen slightly to highlight countdown text
+            DrawRectangle(0, 0, WIDTH, HEIGHT, (Color){0, 0, 0, 100});
+
+            countdown_timer -= dt;
+            int current_count = (int)ceil(countdown_timer);
+
+            if (current_count > 0) {
+                draw_countdown(current_count);
+            }
+
+            // Once timer finishes, return to PLAYING
+            if (countdown_timer <= 0.0f) {
+                gamestate = STATE_PLAYING;
+                animate = 1;
+            }
         }
         else if (gamestate == STATE_END){
             draw_background();
@@ -376,6 +445,8 @@ void load_textures(void){
     assets.pencil = LoadTexture("icons/pencil-solid.png");
     assets.sound_on = LoadTexture("icons/sound-on-solid.png");
     assets.sound_off = LoadTexture("icons/sound-mute-solid.png");
+    assets.pause = LoadTexture("icons/pause.png");
+    assets.play = LoadTexture("icons/play.png");
 }
 
 
@@ -424,7 +495,9 @@ Scale set_scales(void){
         .menu = {2.0f, 2.0f},
 
         .exit_ui = {2.0f, 2.0f},
-        .ui_icon = {0.33f, 0.33f}  // all ui have same scale
+        .ui_icon = {0.33f, 0.33f},  // all ui have same scale
+        .pause_icon = {0.33f, 0.33f},
+        .play_icon = {1.5f, 1.5f}
     };
     return s;
 }
@@ -449,6 +522,8 @@ void free_memory(void){
     UnloadTexture(assets.pencil);
     UnloadTexture(assets.sound_on);
     UnloadTexture(assets.sound_off);
+    UnloadTexture(assets.pause);
+    UnloadTexture(assets.play);
 
     for (int i = 0; i < 10; i++) {
         UnloadTexture(assets.numbers[i]);
@@ -885,7 +960,14 @@ void draw_text_outlined(Font font, const char *text, Vector2 position, Vector2 o
 void button(int *button_tracker, Texture2D tex, Rectangle source, Rectangle dest, Vector2 origin, float rotation, Color hover_tint){
     DrawTexturePro(tex, source, dest, origin, rotation, WHITE);
 
-    if (CheckCollisionPointRec(mouse_position, dest)){
+    Rectangle collision_rect = {
+        dest.x - origin.x,
+        dest.y - origin.y,
+        dest.width,
+        dest.height
+    };
+
+    if (CheckCollisionPointRec(mouse_position, collision_rect)){
         if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
             *button_tracker = 1;
             DrawRectanglePro(dest, origin, rotation, (Color){50, 50, 50, 150});
@@ -930,6 +1012,7 @@ void draw_menu_ui(int *start_game) {
         sound_on = !sound_on;
     }
 }
+
 
 void draw_customization(void) {
     float bird_y = 150, pipe_y = 350, bg_y = 550; // change here to change position of customization options
@@ -1021,4 +1104,28 @@ void draw_customization(void) {
             if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) current_assets.background = i;
         }
     }
+}
+
+
+void draw_countdown(int count) {
+    char num_str[10];
+    snprintf(num_str, sizeof(num_str), "%d", count);
+
+    float font_size = 150.0f;
+    float spacing = 5.0f;
+    Vector2 text_size = MeasureTextEx(font.determination, num_str, font_size, spacing);
+    Vector2 position = {WIDTH / 2.0f, HEIGHT / 2.0f};
+    Vector2 origin = {text_size.x / 2.0f, text_size.y / 2.0f};
+
+    draw_text_outlined(
+        font.determination, 
+        num_str, 
+        position, 
+        origin, 
+        font_size, 
+        spacing, 
+        WHITE, 
+        BLACK, 
+        4.0f
+    );
 }
