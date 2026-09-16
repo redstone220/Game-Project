@@ -2,11 +2,7 @@
 #include <stdlib.h>
 #include <time.h>
 #include <math.h>
-
 #include "raylib.h"
-
-#define RAYGUI_IMPLEMENTATION
-#include "raygui.h"
 
 #define DEBUG 0
 #define HITBOX 0
@@ -16,26 +12,34 @@
 #define HEIGHT 720
 
 
-// THIS AREA HOLDS SETTINGS VARIABLES
-const float gravity = 1200;
+// THIS AREA HOLDS SETTINGS VARIABLES THAT CAN BE TWEAKED TO BALANCE THE GAME
+const float gravity = 1200; // px/s^2
 const float pipe_vertical_distance = 200; // how much distance pipes are apart vertically
 const float pipe_horizontal_distance = 400; // how much distance pipes are apart horizontally
 const float flap_velocity = -450 ; // upward. That's why -ve
 float game_speed = 300; // pipe speed. 
 float background_speed = 70; // for parallex effect
 
+// THIS AREA DEALS WITH VARIABLE THAT NEEDS TO BE PASS IN EVERY FUNCTION
 float dt = 0; // I hate passing it to every function
-
 int inputPressed = 0; // global input tracking. updated in main loops
+Vector2 mouse_position = {0, 0}; // tracks mouse position
 
+// RANDOM GLOBAL VARIABLES(should've used a struct)
 float base_poition = 0; // for parallex
 float backgroung_position = 0; // for parallex
 
 float bird_rotation = 0; // current bird rotation. Updated in draw bird
 float rotation_speed = 75; // how much to rotate per second
 
-int animate = 0; // 1 - animates bird, base, backgrooound, controlrotation. 0 - stop all animation and rotation
+int animate = 0; // 1 - animates bird, base, backgrooound, controls rotation. 0 - stop all animation and rotation
 int sound_on = 1; // 1 - sound on. 0 - sound off
+
+// Outline animation variables for customization screen
+float anim_bird_x = 0;
+float anim_pipe_x = 0;
+float anim_bg_x = 0;
+int first_cust_load = 1;
 
 typedef struct 
 {
@@ -62,6 +66,12 @@ typedef struct
     Texture2D begin_menu;
 
     BirdAnimation bird[3];
+
+    // ui
+    Texture2D exit_ui;
+    Texture2D pencil;
+    Texture2D sound_on;
+    Texture2D sound_off;
 } Assets;
 
 typedef struct 
@@ -99,6 +109,9 @@ typedef struct {
     Vector2 number;
     Vector2 game_over_txt;
     Vector2 menu;
+
+    Vector2 exit_ui;
+    Vector2 ui_icon;
 } Scale;
 
 typedef enum {
@@ -114,33 +127,43 @@ Scale scale;
 Assets assets;
 FontList font;
 CurrentAssets current_assets;
-GameState gamestate = STATE_CUSTOMIZATION;
+GameState gamestate = STATE_MENU;
 
 void show_fps(void);
+
 void load_textures(void);
 Sfx load_sound(void);
-Scale set_scales(void);
 void load_fonts(void);
+Scale set_scales(void);
 void set_current_asset(void);
-void menu(void);
+void init_pipes(Pipe pipes[], int total_pipes);
 void free_memory(void);
+
 void draw_bird(int x, int y, float velocity);
 void move_bird(float *pos_y, float velocity, float dt);
 void update_velocity(float *velocity, float dt);
+
 void draw_pipes(Pipe pipes[], int total_pipes);
 void move_pipe(Pipe pipes[], int total_pipes, float dt);
+
+void update_score(int *score, float bird_x, int total_pipes, Pipe pipes[]);
+int check_death(float pos_x, float pos_y, Pipe pipes[], int total_pipes);
+
+void menu(void);
+void draw_menu_ui(int *start_game);
+
 void draw_background(void);
 void draw_ground(void);
-void update_score(int *score, float bird_x, int total_pipes, Pipe pipes[]);
 void draw_score(int score);
 void draw_high_score(int high_score);
-int check_death(float pos_x, float pos_y, Pipe pipes[], int total_pipes);
 void draw_game_over(void);
-void init_pipes(Pipe pipes[], int total_pipes);
-int load_and_save_high_score(int high_score, char load_or_save);
 void draw_game_over_score(int score, int high_score);
+int load_and_save_high_score(int high_score, char load_or_save);
+void draw_customization(void);
+
 void draw_text_outlined(Font font, const char *text, Vector2 position, Vector2 origin, float fontSize, float spacing, Color textColor, Color outlineColor, float outlineThickness);
- 
+void button(int *button_tracker, Texture2D tex, Rectangle source, Rectangle dest, Vector2 origin, float rotation, Color hover_tint);
+
 int main(){
     InitWindow(WIDTH, HEIGHT, "Flappy Bird");
     InitAudioDevice();
@@ -160,7 +183,7 @@ int main(){
     // THIS AREA HOLDS VARIABLES FOR BIRD
     float pos_x = WIDTH * 0.212;
     float pos_y = HEIGHT/2;
-    float velocity = -400;
+    float velocity = -400; // bird upward or downward velocity
 
     int score =  0; // current score
 
@@ -172,7 +195,9 @@ int main(){
     // main game loop
     while (!WindowShouldClose()){
         BeginDrawing();
+
         inputPressed = IsKeyPressed(KEY_SPACE) || IsMouseButtonPressed(MOUSE_BUTTON_LEFT);
+        mouse_position = GetMousePosition();
         dt = GetFrameTime();
         
         if (gamestate == STATE_MENU)
@@ -180,7 +205,11 @@ int main(){
             draw_background();
             draw_ground();
             menu();
-            if (inputPressed) {
+            
+            int start_game = inputPressed;
+            draw_menu_ui(&start_game);
+
+            if (start_game && gamestate == STATE_MENU) {
                 gamestate = STATE_PLAYING;
                 animate = 1;
                 bird_rotation = -30;
@@ -229,7 +258,18 @@ int main(){
             }
         }
         else if (gamestate == STATE_CUSTOMIZATION){
-            
+            animate = 0;
+            draw_background();
+            draw_ground();
+
+            int exit_pressed = 0;
+            draw_customization();
+            button(&exit_pressed, assets.exit_ui, (Rectangle){0,0,assets.exit_ui.width,assets.exit_ui.height}, (Rectangle){1,1,assets.exit_ui.width+1,assets.exit_ui.height+1}, (Vector2){0, 0}, 0.0f, (Color){100, 100, 100, 100});
+            if (exit_pressed){
+                gamestate = STATE_MENU;
+                animate = 0;
+                bird_rotation = 0;
+            }
         }
 
         show_fps();
@@ -249,7 +289,7 @@ void show_fps(void){
     int fps = GetFPS();
     char fps_info[50];
     snprintf(fps_info, sizeof(fps_info), "FPS = %d", fps);
-    DrawText(fps_info, WIDTH-95, 0, 20, LIGHTGRAY);
+    DrawText(fps_info, 20, HEIGHT-30, 20, LIGHTGRAY);
 }
 
 
@@ -331,6 +371,11 @@ void load_textures(void){
 
     assets.game_over_txt = LoadTexture("sprites/gameover.png");
     assets.begin_menu = LoadTexture("sprites/message.png");
+
+    assets.exit_ui = LoadTexture("icons/exit.png");
+    assets.pencil = LoadTexture("icons/pencil-solid.png");
+    assets.sound_on = LoadTexture("icons/sound-on-solid.png");
+    assets.sound_off = LoadTexture("icons/sound-mute-solid.png");
 }
 
 
@@ -376,7 +421,10 @@ Scale set_scales(void){
         .ground = {1.0f, 1.0f},
         .number = {1.5f, 1.5f},
         .game_over_txt = {2.5f, 2.5f},
-        .menu = {2.0f, 2.0f}
+        .menu = {2.0f, 2.0f},
+
+        .exit_ui = {2.0f, 2.0f},
+        .ui_icon = {0.33f, 0.33f}  // all ui have same scale
     };
     return s;
 }
@@ -396,6 +444,11 @@ void free_memory(void){
     
     UnloadTexture(assets.game_over_txt);
     UnloadTexture(assets.begin_menu);
+
+    UnloadTexture(assets.exit_ui);
+    UnloadTexture(assets.pencil);
+    UnloadTexture(assets.sound_on);
+    UnloadTexture(assets.sound_off);
 
     for (int i = 0; i < 10; i++) {
         UnloadTexture(assets.numbers[i]);
@@ -826,4 +879,146 @@ void draw_text_outlined(Font font, const char *text, Vector2 position, Vector2 o
 
     // Draw the main text perfectly centered on top
     DrawTextPro(font, text, position, origin, 0.0f, fontSize, spacing, textColor);
+}
+
+
+void button(int *button_tracker, Texture2D tex, Rectangle source, Rectangle dest, Vector2 origin, float rotation, Color hover_tint){
+    DrawTexturePro(tex, source, dest, origin, rotation, WHITE);
+
+    if (CheckCollisionPointRec(mouse_position, dest)){
+        if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+            *button_tracker = 1;
+            DrawRectanglePro(dest, origin, rotation, (Color){50, 50, 50, 150});
+        }
+        else DrawRectanglePro(dest, origin, rotation, hover_tint);
+        return;
+    }
+    *button_tracker = 0;
+}
+
+
+void draw_menu_ui(int *start_game) {
+    float icon_scale = scale.ui_icon.x;
+    int pencil_clicked = 0;
+    int sound_clicked = 0;
+    
+    // Draw Sound Button (Top Right)
+    Texture2D sound_tex = sound_on ? assets.sound_on : assets.sound_off;
+    Rectangle sound_src = {0, 0, sound_tex.width, sound_tex.height};
+    float sound_w = sound_tex.width * icon_scale;
+    float sound_h = sound_tex.height * icon_scale;
+    Rectangle sound_dest = {WIDTH - sound_w - 20, 20, sound_w, sound_h};
+    
+    button(&sound_clicked, sound_tex, sound_src, sound_dest, (Vector2){0,0}, 0.0f, (Color){200, 200, 200, 150});
+
+    // Draw Pencil Button (Below Sound)
+    Rectangle pencil_src = {0, 0, assets.pencil.width, assets.pencil.height};
+    float pencil_w = assets.pencil.width * icon_scale;
+    float pencil_h = assets.pencil.height * icon_scale;
+    Rectangle pencil_dest = {WIDTH - pencil_w - 20, sound_dest.y + sound_h + 20, pencil_w, pencil_h};
+    
+    button(&pencil_clicked, assets.pencil, pencil_src, pencil_dest, (Vector2){0,0}, 0.0f, (Color){200, 200, 200, 150});
+
+    // Prevent game from starting when clicking UI
+    if (CheckCollisionPointRec(mouse_position, pencil_dest) || CheckCollisionPointRec(mouse_position, sound_dest)) {
+        *start_game = 0;
+    }
+
+    if (pencil_clicked) {
+        gamestate = STATE_CUSTOMIZATION;
+    } else if (sound_clicked) {
+        sound_on = !sound_on;
+    }
+}
+
+void draw_customization(void) {
+    float bird_y = 150, pipe_y = 350, bg_y = 550; // change here to change position of customization options
+    float spacing = 200; // horizontal spacing
+
+    Vector2 bird_outline_size = {90.0f, 90.0f};
+    Vector2 pipe_outline_size = {90.0f, 120.0f};
+    Vector2 bg_outline_size = {150.0f, 80.0f};
+
+    float start_x_bird = WIDTH/2.0f - spacing;
+    float start_x_pipe = WIDTH/2.0f - spacing/2.0f;
+    float start_x_bg = WIDTH/2.0f - spacing/2.0f;
+
+    if (first_cust_load) {
+        // set-up these variables for the first time
+        anim_bird_x = start_x_bird + current_assets.bird * spacing;
+        anim_pipe_x = start_x_pipe + current_assets.pipe * spacing;
+        anim_bg_x = start_x_bg + current_assets.background * spacing;
+        first_cust_load = 0;
+    }
+
+    // Draw Section Titles
+    float text_offset = 80; // how much above the text is drawn
+    Color text_color = ORANGE;
+    Color outline_color = BLACK;
+    float font_size = 40;
+    float text_spacing = 2;
+    float outline_thickness = 1;
+    draw_text_outlined(font.determination, "BIRD STYLE", (Vector2){WIDTH/2 - MeasureTextEx(font.determination, "BIRD STYLE", font_size, text_spacing).x/2 , bird_y - text_offset}, (Vector2){0.0f, 0.0f}, font_size, text_spacing, text_color, outline_color, outline_thickness);
+    draw_text_outlined(font.determination, "PIPE STYLE", (Vector2){WIDTH/2 - MeasureTextEx(font.determination, "PIPE STYLE", font_size, text_spacing).x/2 , pipe_y - text_offset}, (Vector2){0.0f, 0.0f}, font_size, text_spacing, text_color, outline_color, outline_thickness);
+    draw_text_outlined(font.determination, "BACKGROUND", (Vector2){WIDTH/2 - MeasureTextEx(font.determination, "BACKGROUND", font_size, text_spacing).x/2 , bg_y - text_offset}, (Vector2){0.0f, 0.0f}, font_size, text_spacing, text_color, outline_color, outline_thickness);
+
+    float lerp_speed = 12.0f; // does what it says. creates a no linier animation
+    anim_bird_x += ((start_x_bird + current_assets.bird * spacing) - anim_bird_x) * lerp_speed * dt;
+    anim_pipe_x += ((start_x_pipe + current_assets.pipe * spacing) - anim_pipe_x) * lerp_speed * dt;
+    anim_bg_x += ((start_x_bg + current_assets.background * spacing) - anim_bg_x) * lerp_speed * dt;
+
+    // Selection outlines
+    DrawRectangleLinesEx((Rectangle){anim_bird_x - 45, bird_y - 45, bird_outline_size.x, bird_outline_size.y}, 5, WHITE);
+    DrawRectangleLinesEx((Rectangle){anim_pipe_x - 45, pipe_y - 20, pipe_outline_size.x, pipe_outline_size.y}, 5, WHITE);
+    DrawRectangleLinesEx((Rectangle){anim_bg_x - 75, bg_y - 15, bg_outline_size.x, bg_outline_size.y}, 5, WHITE);
+
+    // Draw Birds Selection (Animated & Scaled)
+    for (int i = 0; i < 3; i++) {
+        float x = start_x_bird + i * spacing;
+        Rectangle hover_rect = {x - 45, bird_y - 45, bird_outline_size.x, bird_outline_size.y};
+        
+        int total_frames = assets.bird[i].total_frames;
+        float anim_time = 0.4;
+        int frame_no = (int)(GetTime() / (anim_time / total_frames)) % total_frames;
+        
+        float b_width = assets.bird[i].frames[frame_no].width * scale.bird.x;
+        float b_height = assets.bird[i].frames[frame_no].height * scale.bird.y;
+        
+        Rectangle dest = {x - b_width/2, bird_y - b_height/2, b_width, b_height};
+        DrawTexturePro(assets.bird[i].frames[frame_no], (Rectangle){0,0,assets.bird[i].frames[frame_no].width,assets.bird[i].frames[frame_no].height}, dest, (Vector2){0,0}, 0, WHITE);
+        
+        if (CheckCollisionPointRec(mouse_position, hover_rect) && i != current_assets.bird) {
+            DrawRectangleLinesEx(hover_rect, 3, GRAY);
+            if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) current_assets.bird = i;
+        }
+    }
+
+    // Draw Pipes Selection
+    for (int i = 0; i < 2; i++) {
+        float x = start_x_pipe + i * spacing;
+        Rectangle hover_rect = {x - 45, pipe_y - 20, pipe_outline_size.x, pipe_outline_size.y};
+        
+        float p_width = assets.pipe[i].width * scale.pipe.x;
+        Rectangle dest = {x - p_width/2, pipe_y - 5, p_width, 100}; 
+        DrawTexturePro(assets.pipe[i], (Rectangle){0,0,assets.pipe[i].width,100}, dest, (Vector2){0,0}, 0, WHITE);
+        
+        if (CheckCollisionPointRec(mouse_position, hover_rect) && current_assets.pipe != i) {
+            DrawRectangleLinesEx(hover_rect, 3, GRAY);
+            if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) current_assets.pipe = i;
+        }
+    }
+
+    // Draw Backgrounds Selection
+    for (int i = 0; i < 2; i++) {
+        float x = start_x_bg + i * spacing;
+        Rectangle hover_rect = {x - 75, bg_y - 15, bg_outline_size.x, bg_outline_size.y};
+        Rectangle dest = {x - 65, bg_y - 5, 130, 60};
+        
+        DrawTexturePro(assets.background[i], (Rectangle){80,300,150, 90}, dest, (Vector2){0,0}, 0, WHITE);
+        
+        if (CheckCollisionPointRec(mouse_position, hover_rect) && current_assets.background != i) {
+            DrawRectangleLinesEx(hover_rect, 3, GRAY);
+            if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) current_assets.background = i;
+        }
+    }
 }
