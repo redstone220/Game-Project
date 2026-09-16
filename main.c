@@ -6,7 +6,7 @@
 
 #define DEBUG 0
 #define HITBOX 0
-#define PLATFORM_WINDOW 0
+#define PLATFORM_WINDOW 1
 
 #define WIDTH 1080
 #define HEIGHT 720
@@ -19,6 +19,7 @@ const float pipe_horizontal_distance = 400; // how much distance pipes are apart
 const float flap_velocity = -450 ; // upward. That's why -ve
 float game_speed = 300; // pipe speed. 
 float background_speed = 70; // for parallex effect
+float difficulty = 2.1; // how much to increase after erach score
 
 // THIS AREA DEALS WITH VARIABLE THAT NEEDS TO BE PASS IN EVERY FUNCTION
 float dt = 0; // I hate passing it to every function
@@ -105,6 +106,7 @@ typedef struct
 typedef struct {
     // all assets needs to be scaled. all are contained here
     Vector2 bird;
+    Vector2 bird_hitbox; // smaller than visual bird
     Vector2 pipe;
     Vector2 background;
     Vector2 ground;
@@ -125,7 +127,8 @@ typedef enum {
     STATE_END,
     STATE_CUSTOMIZATION,
     STATE_PAUSED,
-    STATE_COUNTDOWN
+    STATE_COUNTDOWN,
+    STATE_COOLDOWN
 } GameState;
 
 Sfx sfx;
@@ -174,7 +177,7 @@ void button(int *button_tracker, Texture2D tex, Rectangle source, Rectangle dest
 int main(){
     InitWindow(WIDTH, HEIGHT, "Flappy Bird");
     InitAudioDevice();
-    if (PLATFORM_WINDOW == 1) SetWindowIcon((Image) LoadImage("sprites/yellowbird-midflap.png"));
+    if (PLATFORM_WINDOW == 1) SetWindowIcon((Image) LoadImage("icons/favicon-5.png"));
     SetTargetFPS(60); // vsync handle this automatically. but still miss one or two frames
     SetWindowState(FLAG_VSYNC_HINT);
     srand(time(NULL));
@@ -193,7 +196,10 @@ int main(){
     float velocity = -400; // bird upward or downward velocity
 
     int score =  0; // current score
+
     float countdown_timer = 0.0f; // tracks the time until play resumes
+    float cooldown_timer = 0.0f; // turns off all controls for the duration.
+    float initial_game_speed = game_speed;
 
     // THIS AREA DEALS WITH PIPES
     int total_pipes = WIDTH/pipe_horizontal_distance + 1;
@@ -223,6 +229,7 @@ int main(){
                 bird_rotation = -30;
             }
         }
+
         else if (gamestate == STATE_PLAYING){
             draw_background();
 
@@ -241,7 +248,8 @@ int main(){
     
             if (check_death(pos_x, pos_y, pipes, total_pipes)){
                 draw_game_over();
-                gamestate = STATE_END;
+                gamestate = STATE_COOLDOWN;
+                cooldown_timer = 0.25f; // prevents the player from immediatetly getting into menu when dies
                 animate = 0;
             }
 
@@ -260,6 +268,7 @@ int main(){
                 animate = 0;
             }
         }
+
         else if (gamestate == STATE_PAUSED){
             draw_background();
             draw_pipes(pipes, total_pipes);
@@ -282,6 +291,7 @@ int main(){
                 countdown_timer = 3.0f; // Start 3 second countdown
             }
         }
+
         else if (gamestate == STATE_COUNTDOWN){
             // Keep game state frozen while counting down
             draw_background();
@@ -306,6 +316,19 @@ int main(){
                 animate = 1;
             }
         }
+
+        else if (gamestate == STATE_COOLDOWN){
+            draw_background();
+            draw_pipes(pipes, total_pipes);
+            draw_bird(pos_x, pos_y, velocity);
+            draw_ground();
+            draw_game_over();
+            draw_game_over_score(score, high_score);
+
+            cooldown_timer -= dt;
+            if (cooldown_timer <= 0) gamestate = STATE_END;
+        }
+
         else if (gamestate == STATE_END){
             draw_background();
             draw_pipes(pipes, total_pipes);
@@ -324,8 +347,10 @@ int main(){
                 gamestate = STATE_MENU;
                 animate = 0;
                 bird_rotation = 0; 
+                game_speed = initial_game_speed;
             }
         }
+
         else if (gamestate == STATE_CUSTOMIZATION){
             animate = 0;
             draw_background();
@@ -333,7 +358,17 @@ int main(){
 
             int exit_pressed = 0;
             draw_customization();
-            button(&exit_pressed, assets.exit_ui, (Rectangle){0,0,assets.exit_ui.width,assets.exit_ui.height}, (Rectangle){1,1,assets.exit_ui.width+1,assets.exit_ui.height+1}, (Vector2){0, 0}, 0.0f, (Color){100, 100, 100, 100});
+            button(
+                &exit_pressed,
+                assets.exit_ui, 
+                (Rectangle){0,0,assets.exit_ui.width,assets.exit_ui.height}, 
+                (Rectangle){(WIDTH/2), (HEIGHT - assets.exit_ui.height*scale.exit_ui.y/2 -20), 
+                (assets.exit_ui.width*scale.exit_ui.x), 
+                (assets.exit_ui.height*scale.exit_ui.y)}, 
+                (Vector2){assets.exit_ui.width * scale.exit_ui.x/2.0f, assets.exit_ui.height * scale.exit_ui.y/2.0f},
+                0.0f,
+                (Color){100, 100, 100, 100}
+            );
             if (exit_pressed){
                 gamestate = STATE_MENU;
                 animate = 0;
@@ -487,6 +522,7 @@ Scale set_scales(void){
     */
     Scale s = {
         .bird = (Vector2){2.0f, 2.0f},
+        .bird_hitbox = (Vector2){1.5f, 1.5f}, // slightly smaller than the 2.0f visual scale for forgiveness
         .pipe = (Vector2){1.5f, 2.0f},
         .background = (Vector2){(float)HEIGHT/(float)assets.background[0].height, (float)HEIGHT/(float)assets.background[0].height}, // fills up the whole height
         .ground = {1.0f, 1.0f},
@@ -494,8 +530,8 @@ Scale set_scales(void){
         .game_over_txt = {2.5f, 2.5f},
         .menu = {2.0f, 2.0f},
 
-        .exit_ui = {2.0f, 2.0f},
-        .ui_icon = {0.33f, 0.33f},  // all ui have same scale
+        .exit_ui = {0.5f, 0.5f},
+        .ui_icon = {0.4f, 0.4f},  // all ui have same scale
         .pause_icon = {0.33f, 0.33f},
         .play_icon = {1.5f, 1.5f}
     };
@@ -654,11 +690,13 @@ void draw_bird(int x, int y, float velocity){
 
     Vector2 origin = {bird.width*bird_scale/2, bird.height*bird_scale/2}; // ancoring to the middle point
 
-    #if HITBOX
-        DrawRectanglePro(dest, origin, 0.0f, (Color){100, 100, 100, 50});
-    #endif
-
     DrawTexturePro(bird, source, dest, origin, bird_rotation, WHITE);
+
+    #if HITBOX
+        float hw = bird.width * scale.bird_hitbox.x;
+        float hh = bird.height * scale.bird_hitbox.y;
+        DrawRectanglePro((Rectangle){(float)x, (float)y, hw, hh}, (Vector2){hw/2, hh/2}, 0.0f, (Color){100, 100, 100, 150});
+    #endif
 }
 
 
@@ -745,7 +783,17 @@ void draw_pipes(Pipe pipes[], int total_pipes){
             180.0f,
             WHITE
         );
-        // printf("%f %f \n", pipe.x + green_pipe.width * horizontal_scale, pipe.y - green_pipe.height*vertical_scale);
+        
+        #if HITBOX
+            // Middle green debug rect (the safe gap)
+            DrawRectangle(pipe.x, pipe.y, assets.pipe[0].width * horizontal_scale, pipe_vertical_distance, (Color){0, 100, 0, 50});
+            
+            // Top pipe red debug rect
+            DrawRectangleLinesEx((Rectangle){pipe.x, 0, assets.pipe[0].width * horizontal_scale, pipe.y}, 3, (Color){200, 0, 0, 150});
+            
+            // Bottom pipe red debug rect
+            DrawRectangleLinesEx((Rectangle){pipe.x, pipe.y + pipe_vertical_distance, assets.pipe[0].width * horizontal_scale, HEIGHT - (pipe.y + pipe_vertical_distance)}, 3, (Color){200, 0, 0, 150});
+        #endif
     }
 }
 
@@ -773,12 +821,13 @@ void move_pipe(Pipe pipes[], int total_pipes, float dt){
 
 void update_score(int *score, float bird_x, int total_pipes, Pipe pipes[]){
     /*
-        updates score. (Also changes game velocity after scoring-Todo)
+        updates score. (Also changes game velocity after scoring-Todo[Done])
     */
     for (int i = 0; i < total_pipes; i++){
         if (pipes[i].x <= bird_x && !pipes[i].passed){
             *score += 1;
             pipes[i].passed = 1;
+            game_speed += difficulty;
             if (sound_on) PlaySound(sfx.point);
         }
     }
@@ -894,31 +943,34 @@ void draw_game_over_score(int score, int high_score){
 
 
 int check_death(float pos_x, float pos_y, Pipe pipes[], int total_pipes){
-    float bird_scale = scale.bird.x;
-    // Texture2D bird_frames[] = assets.bird[current_assets.bird].frames;
+    /*
+        checks if bird collides with ceiling, ground or pipe. Also draws pipe debug box(should've done this in draw pipes)
+    */
+    float bird_width = assets.bird[current_assets.bird].frames[0].width * scale.bird_hitbox.x;
+    float bird_height = assets.bird[current_assets.bird].frames[0].height * scale.bird_hitbox.y;
 
-    float bird_width = assets.bird[current_assets.bird].frames[0].width*bird_scale; // good luck reading this
-    float bird_height = assets.bird[current_assets.bird].frames[0].height*bird_scale;
-    Rectangle bird = {pos_x-bird_width/2, pos_y-bird_height/2, bird_width, bird_height};
+    Rectangle bird_rec = {pos_x - bird_width/2, pos_y - bird_height/2, bird_width, bird_height};
 
     int death = 0;
 
     if (pos_y - bird_height/2 <= 0) death = 1; // checking if bird hits ceiling. Bird position is it's center point coordinate
     else if (pos_y + bird_height/2  >= (HEIGHT - assets.ground[0].height*scale.ground.x)) death = 1; // checking if hits floor. This behabiour is buggy. I'll fix it later
 
-    for  (int i=0; i < total_pipes; i++){
-        int within_pipe = (pipes[i].x <= pos_x + bird_width/2 && pipes[i].x + assets.pipe[0].width*scale.pipe.x >= pos_x - bird_width/2);
-        #if HITBOX
-            DrawRectangle(pipes[i].x, pipes[i].y, assets.pipe[0].width*scale.pipe.x, pipe_vertical_distance, (Color){0, 100, 0, 50}); 
-        #endif
-        if (within_pipe && pos_y - bird_height/2 <= pipes[i].y) death = 1; // for top pipe
-        else if (within_pipe && pos_y + bird_height/2 >= pipes[i].y + pipe_vertical_distance) death = 1; 
+     // Pipe collision checks
+    float pipe_w = assets.pipe[0].width * scale.pipe.x;
+    for (int i=0; i < total_pipes; i++){
+        Rectangle top_pipe_rec = {pipes[i].x, 0, pipe_w, pipes[i].y};
+        Rectangle bottom_pipe_rec = {pipes[i].x, pipes[i].y + pipe_vertical_distance, pipe_w, HEIGHT - (pipes[i].y + pipe_vertical_distance)};
+        
+        if (CheckCollisionRecs(bird_rec, top_pipe_rec) || CheckCollisionRecs(bird_rec, bottom_pipe_rec)) {
+            death = 1;
+            break;
+        }
     }
-
     if (sound_on) if (death) PlaySound(sfx.death);
     
     return death;
-}   
+}
 
 
 void draw_game_over(void){
