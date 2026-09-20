@@ -47,7 +47,6 @@ typedef struct
     Font determination; // konwing that the mouse might come out one day for the cheese fills you up with determination
 } FontList;
 
-
 typedef struct
 {
     // holds all frames and total frame count for each bird
@@ -896,9 +895,9 @@ void draw_game_over_score(int score, int high_score){
     int game_over_height = 120; // change in draw_game_over() if changed here.
 
     float score_font_size = 130;
-    float high_score_font_size = 100;
+    float high_score_font_size = 105;
     float score_spacing = 2.0f;
-    float high_score_spacing = 1.75;
+    float high_score_spacing = 1.7;
 
     // draws the score
     char score_string[50];
@@ -914,9 +913,11 @@ void draw_game_over_score(int score, int high_score){
         score_ancor,
         score_font_size,
         score_spacing,
-        GetColor(0xbd1748aa),
-        (Color){50, 50, 50, 255},
+        // GetColor(0xbd1748aa),
+        // (Color){50, 50, 50, 255},
         // WHITE,
+        GetColor(0xFCA048FF),
+        GetColor(0x543847FF),
         3.2
     );
 
@@ -930,13 +931,15 @@ void draw_game_over_score(int score, int high_score){
     draw_text_outlined(
         font.determination,
         high_score_string,
-        (Vector2){WIDTH/2, game_over_height + 265},
+        (Vector2){WIDTH/2, game_over_height + 285},
         high_score_ancor,
         high_score_font_size,
         high_score_spacing,
-        GetColor(0xbd1748aa),
-        (Color){50, 50, 50, 255},
+        // GetColor(0xbd1748aa),
+        // (Color){50, 50, 50, 255},
         // WHITE,
+        GetColor(0xFCA048FF),
+        GetColor(0x543847FF),
         3.2
     );
 }
@@ -1010,8 +1013,6 @@ void draw_text_outlined(Font font, const char *text, Vector2 position, Vector2 o
 
 
 void button(int *button_tracker, Texture2D tex, Rectangle source, Rectangle dest, Vector2 origin, float rotation, Color hover_tint){
-    DrawTexturePro(tex, source, dest, origin, rotation, WHITE);
-
     Rectangle collision_rect = {
         dest.x - origin.x,
         dest.y - origin.y,
@@ -1019,14 +1020,35 @@ void button(int *button_tracker, Texture2D tex, Rectangle source, Rectangle dest
         dest.height
     };
 
+    float click_scale = 0.7f;
+
     if (CheckCollisionPointRec(mouse_position, collision_rect)){
         if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
             *button_tracker = 1;
-            DrawRectanglePro(dest, origin, rotation, (Color){50, 50, 50, 150});
+            DrawTexturePro(
+                tex, 
+                (Rectangle){source.x, source.y, source.width, source.height}, 
+                (Rectangle){dest.x, dest.y, dest.width*click_scale, dest.height*click_scale}, 
+                origin, 
+                rotation, 
+                WHITE
+            );
+            DrawRectanglePro(
+                (Rectangle){dest.x, dest.y, dest.width*click_scale, dest.height*click_scale}, 
+                origin, 
+                rotation, 
+                // (Color){50, 50, 50, 100}
+                hover_tint
+            );
         }
-        else DrawRectanglePro(dest, origin, rotation, hover_tint);
+        else {
+            DrawTexturePro(tex, source, dest, origin, rotation, WHITE);
+            DrawRectanglePro(dest, origin, rotation, hover_tint);
+        }
         return;
     }
+
+    else DrawTexturePro(tex, source, dest, origin, rotation, WHITE);
     *button_tracker = 0;
 }
 
