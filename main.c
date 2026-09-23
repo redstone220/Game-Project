@@ -100,6 +100,7 @@ typedef struct
     Sound death;
     Sound point;
     Sound hit;
+    Music bg;
 } Sfx;
 
 typedef struct {
@@ -212,7 +213,24 @@ int main(){
         inputPressed = IsKeyPressed(KEY_SPACE) || IsMouseButtonPressed(MOUSE_BUTTON_LEFT);
         mouse_position = GetMousePosition();
         dt = GetFrameTime();
-        
+    
+        if (sound_on)
+        {
+            UpdateMusicStream(sfx.bg);
+
+            if (!IsMusicStreamPlaying(sfx.bg))
+            {
+            PlayMusicStream(sfx.bg);
+            }
+        }
+        else
+        {
+            if (IsMusicStreamPlaying(sfx.bg))
+            {
+                PauseMusicStream(sfx.bg);
+            }
+        }       
+
         if (gamestate == STATE_MENU)
         {
             draw_background();
@@ -501,16 +519,17 @@ void set_current_asset(void){
 
 
 Sfx load_sound(void){
-    /*
-        Responsible for loading all sounds. Must be called after InitAudioDevice()
-    */
     Sfx s = {
-       .death = LoadSound("audio/die.wav"),
-       .flap = LoadSound("audio/wing.wav"),
-       .hit = LoadSound("audio/hit.wav"),
-       .point = LoadSound("audio/point.wav")
+        .death = LoadSound("audio/die.wav"),
+        .flap = LoadSound("audio/wing.wav"),
+        .hit = LoadSound("audio/hit.wav"),
+        .point = LoadSound("audio/point.wav"),
+        .bg = LoadMusicStream("audio/bgm.mp3")
     };
+
     SetSoundVolume(s.point, 0.5f);
+    SetMusicVolume(s.bg, 1.5f);
+
     return s;
 }
 
@@ -574,7 +593,8 @@ void free_memory(void){
     UnloadSound(sfx.flap);
     UnloadSound(sfx.hit);
     UnloadSound(sfx.point);
-
+    UnloadMusicStream(sfx.bg);
+    
     UnloadFont(font.determination);
 }
 
