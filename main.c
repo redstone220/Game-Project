@@ -26,9 +26,6 @@ float dt = 0; // I hate passing it to every function
 int inputPressed = 0; // global input tracking. updated in main loops
 Vector2 mouse_position = {0, 0}; // tracks mouse position
 
-// RANDOM GLOBAL VARIABLES(should've used a struct)
-float base_poition = 0; // for parallex
-float backgroung_position = 0; // for parallex
 
 float bird_rotation = 0; // current bird rotation. Updated in draw bird
 float rotation_speed = 75; // how much to rotate per second
@@ -36,11 +33,6 @@ float rotation_speed = 75; // how much to rotate per second
 int animate = 0; // 1 - animates bird, base, backgrooound, controls rotation. 0 - stop all animation and rotation
 int sound_on = 1; // 1 - sound on. 0 - sound off
 
-// Outline animation variables for customization screen
-float anim_bird_x = 0;
-float anim_pipe_x = 0;
-float anim_bg_x = 0;
-int first_cust_load = 1;
 
 typedef struct 
 {
@@ -616,6 +608,8 @@ void draw_background(void){
     /*
         draws backgground. If animate is on, meves background to left.
     */
+    static float backgroung_position = 0; // for parallex
+
     Texture2D background = assets.background[current_assets.background];
     float width = background.width;
     float height = background.height;
@@ -647,6 +641,8 @@ void draw_ground(void){
     /*
         draws and moves ground. ground velocity is same as pipe velocity
     */
+   static float base_poition = 0; // for parallex
+   
     Texture2D ground = assets.ground[current_assets.ground];
     float width = ground.width;
     float height = ground.height;
@@ -1109,6 +1105,12 @@ void draw_menu_ui(int *start_game) {
 
 
 void draw_customization(void) {
+    // Outline animation variables for customization screen
+    static float anim_bird_x = 0;
+    static float anim_pipe_x = 0;
+    static float anim_bg_x = 0;
+    static int first_cust_load = 1;
+
     float bird_y = 150, pipe_y = 350, bg_y = 550; // change here to change position of customization options
     float spacing = 200; // horizontal spacing
 
