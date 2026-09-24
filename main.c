@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <string.h>
 #include <stdlib.h>
 #include <time.h>
 #include <math.h>
@@ -10,6 +11,9 @@
 
 #define WIDTH 1080
 #define HEIGHT 720
+
+#define MAX_LEADERBOARD 5   // how many top scores we keep
+#define MAX_NAME_LEN 16     // max characters in a player's name (including null terminator)
 
 
 // THIS AREA HOLDS SETTINGS VARIABLES THAT CAN BE TWEAKED TO BALANCE THE GAME
@@ -95,6 +99,13 @@ typedef struct
 
 typedef struct
 {
+    // one row of the leaderboard
+    char name[MAX_NAME_LEN];
+    int score;
+} LeaderboardEntry;
+
+typedef struct
+{
     // all sfx in one place
     Sound flap;
     Sound death;
@@ -128,7 +139,8 @@ typedef enum {
     STATE_CUSTOMIZATION,
     STATE_PAUSED,
     STATE_COUNTDOWN,
-    STATE_COOLDOWN
+    STATE_COOLDOWN,
+    STATE_NAME_ENTRY
 } GameState;
 
 Sfx sfx;
@@ -137,6 +149,12 @@ Assets assets;
 FontList font;
 CurrentAssets current_assets;
 GameState gamestate = STATE_MENU;
+
+LeaderboardEntry leaderboard[MAX_LEADERBOARD]; // top scorers, sorted descending by score
+int leaderboard_count = 0;                     // how many entries are currently filled in
+
+char player_name[MAX_NAME_LEN] = "";           // name being typed on the name-entry screen
+int name_length = 0;
 
 void show_fps(void);
 
@@ -164,12 +182,18 @@ void draw_menu_ui(int *start_game);
 void draw_background(void);
 void draw_ground(void);
 void draw_score(int score);
-void draw_high_score(int high_score);
 void draw_game_over(void);
-void draw_game_over_score(int score, int high_score);
-int load_and_save_high_score(int high_score, char load_or_save);
+void draw_game_over_score(int score);
 void draw_customization(void);
 void draw_countdown(int count);
+
+void load_leaderboard(void);
+void save_leaderboard(void);
+int qualifies_for_leaderboard(int score);
+void insert_leaderboard_entry(const char *name, int score);
+void draw_leaderboard(int start_y);
+void update_name_entry(void);
+void draw_name_entry(int score);
 
 void draw_text_outlined(Font font, const char *text, Vector2 position, Vector2 origin, float fontSize, float spacing, Color textColor, Color outlineColor, float outlineThickness);
 void button(int *button_tracker, Texture2D tex, Rectangle source, Rectangle dest, Vector2 origin, float rotation, Color hover_tint);
@@ -182,7 +206,7 @@ int main(){
     SetWindowState(FLAG_VSYNC_HINT);
     srand(time(NULL));
     
-    int high_score = load_and_save_high_score(0, 'l'); // loading. so first value does not matter
+    load_leaderboard();
     
     load_textures();
     set_current_asset();
@@ -241,9 +265,10 @@ int main(){
             draw_menu_ui(&start_game);
 
             if (start_game && gamestate == STATE_MENU) {
-                gamestate = STATE_PLAYING;
-                animate = 1;
-                bird_rotation = -30;
+                player_name[0] = '\0';
+                name_length = 0;
+                gamestate = STATE_NAME_ENTRY;
+                animate = 0;
             }
         }
 
@@ -272,7 +297,6 @@ int main(){
 
             update_score(&score, pos_x, total_pipes, pipes);
             draw_score(score);
-            if (score > high_score) high_score = score;
             
             draw_ground();
 
@@ -340,10 +364,32 @@ int main(){
             draw_bird(pos_x, pos_y, velocity);
             draw_ground();
             draw_game_over();
-            draw_game_over_score(score, high_score);
+            draw_game_over_score(score);
 
             cooldown_timer -= dt;
-            if (cooldown_timer <= 0) gamestate = STATE_END;
+            if (cooldown_timer <= 0) {
+                // The player name was entered before the run started.
+                // If the score qualifies, save it automatically.
+                if (qualifies_for_leaderboard(score)) {
+                    insert_leaderboard_entry(player_name, score);
+                    save_leaderboard();
+                }
+                gamestate = STATE_END;
+            }
+        }
+
+        else if (gamestate == STATE_NAME_ENTRY){
+            draw_background();
+            draw_ground();
+
+            update_name_entry();
+            draw_name_entry(0);
+
+            if (IsKeyPressed(KEY_ENTER) && name_length > 0) {
+                gamestate = STATE_PLAYING;
+                animate = 1;
+                bird_rotation = -30;
+            }
         }
 
         else if (gamestate == STATE_END){
@@ -352,7 +398,8 @@ int main(){
             draw_bird(pos_x, pos_y, velocity);
             draw_ground();
             draw_game_over();
-            draw_game_over_score(score, high_score);
+            draw_game_over_score(score);
+            draw_leaderboard(455);
             
             // re-setting
             if (inputPressed){
@@ -397,7 +444,6 @@ int main(){
         EndDrawing();
     }
     
-    load_and_save_high_score(high_score, 's');
     free_memory();
     CloseAudioDevice();
     CloseWindow();
@@ -414,32 +460,237 @@ void show_fps(void){
 }
 
 
-int load_and_save_high_score(int high_score, char load_or_save){
+void load_leaderboard(void){
     /*
-    Loads and Saves high score. If load_or_save = 'l' then loads. if load_or_save = 's' saves.
-    When loading high_score needs to be passed. Default it to 0 even though it has no job here
+        Loads the saved leaderboard from saves/leaderboard.txt.
+        File format is one "name score" pair per line, already sorted highest first.
+        If the file doesn't exist yet (first run), leaderboard just stays empty.
     */
-    int high_score_load = 0;
-    if (load_or_save == 'l'){
-        FILE *fp = fopen("saves/high_score.txt", "r");
-        if (fp != NULL){
-            fscanf(fp, "%d", &high_score_load);
-            fclose(fp);
-        }
-        else high_score_load = 0;
-        return high_score_load;
-    }
+    leaderboard_count = 0;
 
-    if (load_or_save == 's'){
-        FILE *high_score_file = fopen("saves/high_score.txt", "w"); 
-        if (high_score_file != NULL){
-            fprintf(high_score_file, "%d", high_score);
-            fclose(high_score_file);
-        }
+    FILE *fp = fopen("saves/leaderboard.txt", "r");
+    if (fp == NULL) return;
+
+    char name_buf[MAX_NAME_LEN];
+    int score_buf;
+    while (leaderboard_count < MAX_LEADERBOARD && fscanf(fp, "%15s %d", name_buf, &score_buf) == 2){
+        strncpy(leaderboard[leaderboard_count].name, name_buf, MAX_NAME_LEN - 1);
+        leaderboard[leaderboard_count].name[MAX_NAME_LEN - 1] = '\0';
+        leaderboard[leaderboard_count].score = score_buf;
+        leaderboard_count++;
     }
-    return 0;
+    fclose(fp);
 }
 
+
+void save_leaderboard(void){
+    /*
+        Writes the current leaderboard array to saves/leaderboard.txt, one "name score" per line.
+    */
+    FILE *fp = fopen("saves/leaderboard.txt", "w");
+    if (fp == NULL) return;
+
+    for (int i = 0; i < leaderboard_count; i++){
+        fprintf(fp, "%s %d\n", leaderboard[i].name, leaderboard[i].score);
+    }
+    fclose(fp);
+}
+
+
+int qualifies_for_leaderboard(int score){
+    /*
+        If this name already exists, only a higher score should update it.
+        This prevents the same player from appearing multiple times.
+
+        If the name does not exist, use the normal Top 5 qualification rules.
+    */
+    if (score <= 0) return 0;
+
+    for (int i = 0; i < leaderboard_count; i++){
+        if (strcmp(leaderboard[i].name, player_name) == 0){
+            return score > leaderboard[i].score;
+        }
+    }
+
+    if (leaderboard_count < MAX_LEADERBOARD) return 1;
+
+    return score > leaderboard[MAX_LEADERBOARD - 1].score;
+}
+
+
+void insert_leaderboard_entry(const char *name, int score){
+    /*
+        If the name already exists, replace its old score only when the
+        new score is higher.
+
+        If the name does not exist, add a new entry and keep the
+        leaderboard sorted from highest score to lowest score.
+    */
+
+    // First check for an existing player with the same name.
+    for (int i = 0; i < leaderboard_count; i++){
+        if (strcmp(leaderboard[i].name, name) == 0){
+
+            // Same name: update only if the new score is higher.
+            if (score > leaderboard[i].score){
+                leaderboard[i].score = score;
+
+                // Move the updated entry upward if necessary.
+                for (int j = i; j > 0 && leaderboard[j].score > leaderboard[j - 1].score; j--){
+                    LeaderboardEntry temp = leaderboard[j];
+                    leaderboard[j] = leaderboard[j - 1];
+                    leaderboard[j - 1] = temp;
+                }
+            }
+
+            return;
+        }
+    }
+
+    // Name does not exist, so add a new player.
+    int insert_at = leaderboard_count < MAX_LEADERBOARD ? leaderboard_count : MAX_LEADERBOARD - 1;
+
+    strncpy(leaderboard[insert_at].name, name, MAX_NAME_LEN - 1);
+    leaderboard[insert_at].name[MAX_NAME_LEN - 1] = '\0';
+    leaderboard[insert_at].score = score;
+
+    if (leaderboard_count < MAX_LEADERBOARD) leaderboard_count++;
+
+    // Keep the leaderboard sorted highest-score-first.
+    for (int i = insert_at; i > 0 && leaderboard[i].score > leaderboard[i - 1].score; i--){
+        LeaderboardEntry temp = leaderboard[i];
+        leaderboard[i] = leaderboard[i - 1];
+        leaderboard[i - 1] = temp;
+    }
+}
+
+
+void update_name_entry(void){
+    /*
+        Reads keyboard input on the name-entry screen and builds up player_name.
+        Only letters and digits are accepted, so the "name score" file format never
+        breaks on a stray space.
+    */
+    int key = GetCharPressed();
+    while (key > 0){
+        int is_letter = (key >= 'A' && key <= 'Z') || (key >= 'a' && key <= 'z');
+        int is_digit = (key >= '0' && key <= '9');
+
+        if ((is_letter || is_digit) && name_length < MAX_NAME_LEN - 1){
+            player_name[name_length] = (char)key;
+            name_length++;
+            player_name[name_length] = '\0';
+        }
+        key = GetCharPressed(); // there can be more than one character typed per frame
+    }
+
+    if (IsKeyPressed(KEY_BACKSPACE) && name_length > 0){
+        name_length--;
+        player_name[name_length] = '\0';
+    }
+}
+
+
+void draw_name_entry(int score){
+    /*
+        Name entry is shown before the run starts.
+        The same determination font used by the score/leaderboard is used here.
+    */
+    (void)score;
+
+    DrawRectangle(0, 0, WIDTH, HEIGHT, (Color){0, 0, 0, 120});
+
+    const float title_font_size = 72.0f;
+    const float name_font_size = 58.0f;
+    const float hint_font_size = 30.0f;
+    const float spacing = 2.0f;
+
+    const char *title = "ENTER YOUR NAME";
+    Vector2 title_size = MeasureTextEx(font.determination, title, title_font_size, spacing);
+    draw_text_outlined(
+        font.determination, title,
+        (Vector2){WIDTH / 2.0f, 245.0f},
+        (Vector2){title_size.x / 2.0f, title_size.y / 2.0f},
+        title_font_size, spacing,
+        GOLD, BLACK, 3.0f
+    );
+
+    Rectangle box = {WIDTH / 2.0f - 330.0f, 320.0f, 660.0f, 105.0f};
+    DrawRectangleRec(box, WHITE);
+    DrawRectangleLinesEx(box, 4.0f, BLACK);
+
+    Vector2 name_size = MeasureTextEx(font.determination, player_name, name_font_size, spacing);
+    draw_text_outlined(
+        font.determination, player_name,
+        (Vector2){WIDTH / 2.0f, box.y + box.height / 2.0f},
+        (Vector2){name_size.x / 2.0f, name_size.y / 2.0f},
+        name_font_size, spacing,
+        BLACK, WHITE, 0.0f
+    );
+
+    // Blinking cursor after the typed name.
+    if (((int)(GetTime() * 2.0)) % 2 == 0){
+        float cursor_x = WIDTH / 2.0f + name_size.x / 2.0f + 5.0f;
+        DrawRectangle((int)cursor_x, (int)box.y + 20, 4, (int)box.height - 40, BLACK);
+    }
+
+    const char *hint = "TYPE YOUR NAME  •  PRESS ENTER TO START";
+    Vector2 hint_size = MeasureTextEx(font.determination, hint, hint_font_size, spacing);
+    draw_text_outlined(
+        font.determination, hint,
+        (Vector2){WIDTH / 2.0f, 485.0f},
+        (Vector2){hint_size.x / 2.0f, hint_size.y / 2.0f},
+        hint_font_size, spacing,
+        WHITE, BLACK, 2.0f
+    );
+}
+
+void draw_leaderboard(int start_y){
+    /*
+        Draws the saved Top 5 leaderboard using the determination font.
+    */
+    const float title_font_size = 62.0f;
+    const float row_font_size = 43.0f;
+    const float spacing = 1.5f;
+    const int row_height = 40;
+
+    const char *title = "TOP 5";
+    Vector2 title_size = MeasureTextEx(font.determination, title, title_font_size, spacing);
+    draw_text_outlined(
+        font.determination, title,
+        (Vector2){WIDTH / 2.0f, (float)start_y},
+        (Vector2){title_size.x / 2.0f, title_size.y / 2.0f},
+        title_font_size, spacing,
+        GOLD, BLACK, 2.5f
+    );
+
+    if (leaderboard_count == 0){
+        const char *empty_msg = "NO SCORES YET";
+        Vector2 empty_size = MeasureTextEx(font.determination, empty_msg, row_font_size, spacing);
+        draw_text_outlined(
+            font.determination, empty_msg,
+            (Vector2){WIDTH / 2.0f, (float)(start_y + row_height)},
+            (Vector2){empty_size.x / 2.0f, empty_size.y / 2.0f},
+            row_font_size, spacing,
+            WHITE, BLACK, 1.5f
+        );
+        return;
+    }
+
+    for (int i = 0; i < leaderboard_count; i++){
+        char row[64];
+        snprintf(row, sizeof(row), "%d. %-16s %d", i + 1, leaderboard[i].name, leaderboard[i].score);
+
+        Vector2 row_size = MeasureTextEx(font.determination, row, row_font_size, spacing);
+        draw_text_outlined(
+            font.determination, row,
+            (Vector2){WIDTH / 2.0f, (float)(start_y + row_height * (i + 1))},
+            (Vector2){row_size.x / 2.0f, row_size.y / 2.0f},
+            row_font_size, spacing,
+            WHITE, BLACK, 1.5f
+        );
+    }
+}
 
 void load_textures(void){
     /*
@@ -900,70 +1151,34 @@ void draw_score(int score) {
 }
 
 
-void draw_high_score(int high_score){
-    // used to draw high score. (replaced with game over score)
-    char high_score_string[20];
-    snprintf(high_score_string, sizeof(high_score_string), "High Score = %d", high_score);
-    DrawText(high_score_string, 0, 50, 30, RED);
-}
-
-
-void draw_game_over_score(int score, int high_score){
+void draw_game_over_score(int score){
     /*
-        draws score and high_score in state end
+        Draws only the current score on the game-over screen.
+        High score has been replaced by the Top 5 leaderboard.
     */
     int game_over_height = 120; // change in draw_game_over() if changed here.
 
-    float score_font_size = 130;
-    float high_score_font_size = 105;
-    float score_spacing = 2.0f;
-    float high_score_spacing = 1.7;
+    const float score_font_size = 82.0f;
+    const float score_spacing = 2.0f;
 
-    // draws the score
     char score_string[50];
-    snprintf(score_string, sizeof(score_string), "Score = %d", score);
+    snprintf(score_string, sizeof(score_string), "SCORE  %d", score);
 
     Vector2 score_text_size = MeasureTextEx(font.determination, score_string, score_font_size, score_spacing);
-    Vector2 score_ancor = {score_text_size.x/2, score_text_size.y/2}; // ancoring to center point
-    
+    Vector2 score_anchor = {score_text_size.x / 2.0f, score_text_size.y / 2.0f};
+
     draw_text_outlined(
         font.determination,
         score_string,
-        (Vector2){WIDTH/2, game_over_height + 150},
-        score_ancor,
+        (Vector2){WIDTH / 2.0f, game_over_height + 155},
+        score_anchor,
         score_font_size,
         score_spacing,
-        // GetColor(0xbd1748aa),
-        // (Color){50, 50, 50, 255},
-        // WHITE,
         GetColor(0xFCA048FF),
         GetColor(0x543847FF),
-        3.2
-    );
-
-    // draws the high_score
-    char high_score_string[50];
-    snprintf(high_score_string, sizeof(high_score_string), "High Score = %d", high_score);
-    
-    Vector2 high_score_text_size = MeasureTextEx(font.determination, high_score_string, high_score_font_size, high_score_spacing);
-    Vector2 high_score_ancor = {high_score_text_size.x/2, high_score_text_size.y/2}; // ancoring to center point
-    
-    draw_text_outlined(
-        font.determination,
-        high_score_string,
-        (Vector2){WIDTH/2, game_over_height + 285},
-        high_score_ancor,
-        high_score_font_size,
-        high_score_spacing,
-        // GetColor(0xbd1748aa),
-        // (Color){50, 50, 50, 255},
-        // WHITE,
-        GetColor(0xFCA048FF),
-        GetColor(0x543847FF),
-        3.2
+        3.2f
     );
 }
-
 
 int check_death(float pos_x, float pos_y, Pipe pipes[], int total_pipes){
     /*
@@ -1212,7 +1427,7 @@ void draw_countdown(int count) {
     Vector2 origin = {text_size.x / 2.0f, text_size.y / 2.0f};
 
     draw_text_outlined(
-        font.determination, 
+        font.determination,  
         num_str, 
         position, 
         origin, 
