@@ -5,3 +5,6 @@ Store high score in a file and use it. move it to a function [Done]
 Add a main menu [Done]
 Add settings [Done]
 Use custom font for drawing text [Done]
+
+rplace placholder with icons[Done]
+move name change to left with proper scaling[Done]

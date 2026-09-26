@@ -12,8 +12,8 @@
 #define WIDTH 1080
 #define HEIGHT 720
 
-#define MAX_LEADERBOARD 5   // how many top scores we keep
-#define MAX_NAME_LEN 16     // max characters in a player's name (including null terminator)
+#define MAX_LEADERBOARD 5
+#define MAX_NAME_LEN 16
 
 
 // THIS AREA HOLDS SETTINGS VARIABLES THAT CAN BE TWEAKED TO BALANCE THE GAME
@@ -71,9 +71,9 @@ typedef struct
     Texture2D pause;
     Texture2D play;
 
-    Texture2D credits_btn;    // generated flat-color background for the CREDITS button
-    Texture2D how_to_play_btn; // generated flat-color background for the HOW TO PLAY button
-    Texture2D edit_user;      // pencil-on-person icon used to edit the player's name
+    Texture2D credits_btn;    
+    Texture2D how_to_play_btn; 
+    Texture2D edit_user;
 } Assets;
 
 typedef struct 
@@ -125,6 +125,7 @@ typedef struct {
 
     Vector2 exit_ui;
     Vector2 ui_icon;
+    Vector2 info_ui;
     Vector2 pause_icon;
     Vector2 play_icon;
 } Scale;
@@ -216,7 +217,7 @@ int main(){
     srand(time(NULL));
     
     load_leaderboard();
-    load_player_name(); // remembers the name from the last time the game was played
+    load_player_name(); // last players name
     
     load_textures();
     set_current_asset();
@@ -248,24 +249,19 @@ int main(){
         mouse_position = GetMousePosition();
         dt = GetFrameTime();
     
-        if (sound_on)
-        {
+        if (sound_on) {
             UpdateMusicStream(sfx.bg);
-
             if (!IsMusicStreamPlaying(sfx.bg)) {
                 PlayMusicStream(sfx.bg);
             }
         }
-        else
-        {
-            if (IsMusicStreamPlaying(sfx.bg))
-            {
+        else {
+            if (IsMusicStreamPlaying(sfx.bg)) {
                 PauseMusicStream(sfx.bg);
             }
         }       
 
-        if (gamestate == STATE_MENU)
-        {
+        if (gamestate == STATE_MENU) {
             draw_background();
             draw_ground();
             menu();
@@ -278,6 +274,7 @@ int main(){
                 gamestate = STATE_PLAYING;
                 animate = 1;
                 bird_rotation = -30;
+                velocity = flap_velocity;
             }
         }
 
@@ -393,26 +390,16 @@ int main(){
 
             update_name_entry();
             draw_name_entry();
-
-            if (IsKeyPressed(KEY_ENTER)) {
-                if (name_length == 0) { // don't allow saving a blank name
-                    snprintf(player_name, MAX_NAME_LEN, "Player");
-                    name_length = (int)strlen(player_name);
-                }
-                save_player_name();
-                gamestate = STATE_MENU;
-            }
         }
 
         else if (gamestate == STATE_CREDITS){
             draw_background();
             draw_ground();
-            menu();
 
             Rectangle panel_box = draw_credits_panel();
 
             float exit_h = assets.exit_ui.height * scale.exit_ui.y;
-            float exit_center_y = panel_box.y + panel_box.height + 20.0f + exit_h / 2.0f;
+            float exit_center_y = panel_box.y + panel_box.height + 50.0f + exit_h / 2.0f;
             float max_center_y = HEIGHT - exit_h / 2.0f - 20.0f; // keep it on-screen even if the panel grows tall
             if (exit_center_y > max_center_y) exit_center_y = max_center_y;
 
@@ -436,12 +423,11 @@ int main(){
         else if (gamestate == STATE_HOW_TO_PLAY){
             draw_background();
             draw_ground();
-            menu();
 
             Rectangle panel_box = draw_how_to_play_panel();
 
             float exit_h = assets.exit_ui.height * scale.exit_ui.y;
-            float exit_center_y = panel_box.y + panel_box.height + 20.0f + exit_h / 2.0f;
+            float exit_center_y = panel_box.y + panel_box.height + 80.0f + exit_h / 2.0f;
             float max_center_y = HEIGHT - exit_h / 2.0f - 20.0f; // keep it on-screen even if the panel grows tall
             if (exit_center_y > max_center_y) exit_center_y = max_center_y;
 
@@ -469,15 +455,14 @@ int main(){
             draw_ground();
             draw_game_over();
             draw_game_over_score(score);
-            draw_leaderboard(455);
+            draw_leaderboard(400);
             
             // re-setting
             if (inputPressed){
                 init_pipes(pipes, total_pipes);
                 score = 0;
                 pos_y = HEIGHT/2;
-                velocity = -400;
-                dt = 0;
+                velocity = flap_velocity;
                 gamestate = STATE_MENU;
                 animate = 0;
                 bird_rotation = 0; 
@@ -686,6 +671,15 @@ void update_name_entry(void){
         name_length--;
         player_name[name_length] = '\0';
     }
+
+    if (IsKeyPressed(KEY_ENTER)) {
+        if (name_length == 0) { // don't allow saving a blank name
+            snprintf(player_name, MAX_NAME_LEN, "Player");
+            name_length = (int)strlen(player_name);
+        }
+        save_player_name();
+        gamestate = STATE_MENU;
+    }
 }
 
 
@@ -731,7 +725,7 @@ void draw_name_entry(void){
         DrawRectangle((int)cursor_x, (int)box.y + 20, 4, (int)box.height - 40, BLACK);
     }
 
-    const char *hint = "TYPE YOUR NAME  •  PRESS ENTER TO SAVE";
+    const char *hint = "TYPE YOUR NAME. PRESS ENTER TO SAVE"; // determination lacks some character
     Vector2 hint_size = MeasureTextEx(font.determination, hint, hint_font_size, spacing);
     draw_text_outlined(
         font.determination, hint,
@@ -742,6 +736,7 @@ void draw_name_entry(void){
     );
 }
 
+
 void draw_leaderboard(int start_y){
     /*
         Draws the saved Top 5 leaderboard using the determination font.
@@ -750,6 +745,9 @@ void draw_leaderboard(int start_y){
     const float row_font_size = 43.0f;
     const float spacing = 1.5f;
     const int row_height = 40;
+    
+    // Define how wide the leaderboard should spread out
+    const float table_width = 400.0f; 
 
     const char *title = "TOP 5";
     Vector2 title_size = MeasureTextEx(font.determination, title, title_font_size, spacing);
@@ -760,6 +758,8 @@ void draw_leaderboard(int start_y){
         title_font_size, spacing,
         GOLD, BLACK, 2.5f
     );
+
+    start_y += 20;
 
     if (leaderboard_count == 0){
         const char *empty_msg = "NO SCORES YET";
@@ -774,15 +774,37 @@ void draw_leaderboard(int start_y){
         return;
     }
 
-    for (int i = 0; i < leaderboard_count; i++){
-        char row[64];
-        snprintf(row, sizeof(row), "%d. %-16s %d", i + 1, leaderboard[i].name, leaderboard[i].score);
+    // Calculate the left and right boundaries for the aligned columns
+    float left_edge = (WIDTH / 2.0f) - (table_width / 2.0f);
+    float right_edge = (WIDTH / 2.0f) + (table_width / 2.0f);
 
-        Vector2 row_size = MeasureTextEx(font.determination, row, row_font_size, spacing);
+    for (int i = 0; i < leaderboard_count; i++){
+        float current_y = (float)(start_y + row_height * (i + 1));
+
+        // Format the left side (Rank and Name)
+        char left_text[64];
+        snprintf(left_text, sizeof(left_text), "%d. %s", i + 1, leaderboard[i].name);
+        Vector2 left_size = MeasureTextEx(font.determination, left_text, row_font_size, spacing);
+
+        // Format the right side (Score)
+        char right_text[32];
+        snprintf(right_text, sizeof(right_text), "%d", leaderboard[i].score);
+        Vector2 right_size = MeasureTextEx(font.determination, right_text, row_font_size, spacing);
+
+        // Draw left side (Anchor point at X = 0 for left alignment)
         draw_text_outlined(
-            font.determination, row,
-            (Vector2){WIDTH / 2.0f, (float)(start_y + row_height * (i + 1))},
-            (Vector2){row_size.x / 2.0f, row_size.y / 2.0f},
+            font.determination, left_text,
+            (Vector2){left_edge, current_y},
+            (Vector2){0.0f, left_size.y / 2.0f}, 
+            row_font_size, spacing,
+            WHITE, BLACK, 1.5f
+        );
+
+        // Draw right side (Anchor point at X = right_size.x for right alignment)
+        draw_text_outlined(
+            font.determination, right_text,
+            (Vector2){right_edge, current_y},
+            (Vector2){right_size.x, right_size.y / 2.0f}, 
             row_font_size, spacing,
             WHITE, BLACK, 1.5f
         );
@@ -792,18 +814,14 @@ void draw_leaderboard(int start_y){
 
 Rectangle draw_info_panel(const char *title, const char *lines[], int line_count, Color box_color, Color text_color){
     /*
-        Generic "box with a title and a few lines of text" popup, used by both
-        the credits screen and the how-to-play screen. Each line's font size is
-        auto-shrunk to fit inside the box's width, so long lines (like URLs)
-        never spill past the box edges. Returns the box rectangle so callers
-        can attach other UI (like an exit button) right below it.
+        Text box used by credit and how to play
     */
-    DrawRectangle(0, 0, WIDTH, HEIGHT, (Color){0, 0, 0, 150}); // dim whatever is behind the panel
+    // DrawRectangle(0, 0, WIDTH, HEIGHT, (Color){0, 0, 0, 150}); // dim whatever is behind the panel
 
     float line_height = 36.0f;
     float box_w = 940.0f;
     float box_h = 150.0f + line_count * line_height;
-    Rectangle box = {WIDTH / 2.0f - box_w / 2.0f, HEIGHT / 2.0f - box_h / 2.0f, box_w, box_h};
+    Rectangle box = {WIDTH / 2.0f - box_w / 2.0f, HEIGHT / 2.0f - box_h / 2.0f - 50, box_w, box_h};
 
     DrawRectangleRec(box, box_color);
     DrawRectangleLinesEx(box, 5.0f, BLACK);
@@ -865,9 +883,10 @@ Rectangle draw_credits_panel(void){
 
 Rectangle draw_how_to_play_panel(void){
     const char *lines[] = {
-        "PRESS SPACE TO FLY",
+        "PRESS SPACE OR RIGHT MOUSE BUTTON TO FLY",
         "AVOID HITTING THE PIPES",
-        "PASS A PIPE GAP FOR +1 SCORE"
+        "PASS A PIPE GAP FOR +1 SCORE",
+        "SPEED INCREASES AS YOU PLAY"
     };
     int line_count = sizeof(lines) / sizeof(lines[0]);
     return draw_info_panel("HOW TO PLAY", lines, line_count, GetColor(0x1F4E4EFF), GetColor(0xA8E6CFFF));
@@ -926,23 +945,16 @@ void load_textures(void){
     assets.game_over_txt = LoadTexture("sprites/gameover.png");
     assets.begin_menu = LoadTexture("sprites/message.png");
 
-    assets.exit_ui = LoadTexture("icons/exit.png"); // exit.png loaded here - used by 3 buttons: CREDITS, HOW TO PLAY, CUSTOMIZATION
+    assets.exit_ui = LoadTexture("icons/exit.png");
     assets.pencil = LoadTexture("icons/pencil-solid.png");
     assets.sound_on = LoadTexture("icons/sound-on-solid.png");
     assets.sound_off = LoadTexture("icons/sound-mute-solid.png");
     assets.pause = LoadTexture("icons/pause.png");
     assets.play = LoadTexture("icons/play.png");
 
-    // small flat-color images, stretched by button() to whatever size the button needs
-    Image credits_img = GenImageColor(4, 4, GetColor(0x5B3A29FF));   // warm brown
-    assets.credits_btn = LoadTextureFromImage(credits_img);
-    UnloadImage(credits_img);
-
-    Image how_to_play_img = GenImageColor(4, 4, GetColor(0x1F4E4EFF)); // dark teal
-    assets.how_to_play_btn = LoadTextureFromImage(how_to_play_img);
-    UnloadImage(how_to_play_img);
-
-    assets.edit_user = LoadTexture("icons/edit-user.png"); // save the uploaded icon here in your project
+    assets.credits_btn = LoadTexture("icons/credits.png");
+    assets.how_to_play_btn = LoadTexture("icons/HTP.png");
+    assets.edit_user = LoadTexture("icons/edit-user.png");
 }
 
 
@@ -994,6 +1006,7 @@ Scale set_scales(void){
 
         .exit_ui = {0.5f, 0.5f},
         .ui_icon = {0.4f, 0.4f},  // all ui have same scale
+        .info_ui = {0.22 , 0.26},
         .pause_icon = {0.33f, 0.33f},
         .play_icon = {1.5f, 1.5f}
     };
@@ -1016,7 +1029,7 @@ void free_memory(void){
     UnloadTexture(assets.game_over_txt);
     UnloadTexture(assets.begin_menu);
 
-    UnloadTexture(assets.exit_ui); // matches the LoadTexture("icons/exit.png") in load_textures()
+    UnloadTexture(assets.exit_ui);
     UnloadTexture(assets.pencil);
     UnloadTexture(assets.sound_on);
     UnloadTexture(assets.sound_off);
@@ -1300,7 +1313,7 @@ void update_score(int *score, float bird_x, int total_pipes, Pipe pipes[]){
             *score += 1;
             pipes[i].passed = 1;
             game_speed += difficulty;
-            if (sound_on) play_sound_pitch_variation(sfx.point, 0.10);
+            if (sound_on) play_sound_pitch_variation(sfx.point, 0.01);
         }
     }
 }
@@ -1381,6 +1394,7 @@ void draw_game_over_score(int score){
         3.2f
     );
 }
+
 
 int check_death(float pos_x, float pos_y, Pipe pipes[], int total_pipes){
     /*
@@ -1531,53 +1545,27 @@ void draw_menu_extra_ui(int *start_game) {
         its edit icon (top-center). Uses button() for every clickable element,
         same as the sound/pencil buttons above.
     */
-    float btn_w = 230.0f, btn_h = 60.0f, gap = 15.0f;
+    float btn_credit_w = assets.credits_btn.width*scale.info_ui.x, btn_credit_h = assets.credits_btn.height*scale.info_ui.y;
+    float btn_htp_w = assets.how_to_play_btn.width*scale.info_ui.x, btn_htp_h = assets.how_to_play_btn.height*scale.info_ui.y;
+
     float start_x = 20.0f, start_y = 20.0f;
-    float label_font_size = 26.0f, label_spacing = 1.5f;
+    float gap = 15.0f;
 
-    // HOW TO PLAY button
-    Rectangle howto_dest = {start_x, start_y, btn_w, btn_h};
-    int howto_clicked = 0;
-    button(&howto_clicked, assets.how_to_play_btn, (Rectangle){0, 0, assets.how_to_play_btn.width, assets.how_to_play_btn.height}, howto_dest, (Vector2){0, 0}, 0.0f, (Color){255, 255, 255, 60});
-    DrawRectangleLinesEx(howto_dest, 3, BLACK);
-
-    const char *howto_label = "HOW TO PLAY";
-    Vector2 howto_label_size = MeasureTextEx(font.determination, howto_label, label_font_size, label_spacing);
-    draw_text_outlined(
-        font.determination, howto_label,
-        (Vector2){howto_dest.x + btn_w / 2.0f, howto_dest.y + btn_h / 2.0f},
-        (Vector2){howto_label_size.x / 2.0f, howto_label_size.y / 2.0f},
-        label_font_size, label_spacing, WHITE, BLACK, 1.5f
-    );
-
-    // CREDITS button (below How To Play)
-    Rectangle credits_dest = {start_x, start_y + btn_h + gap, btn_w, btn_h};
-    int credits_clicked = 0;
-    button(&credits_clicked, assets.credits_btn, (Rectangle){0, 0, assets.credits_btn.width, assets.credits_btn.height}, credits_dest, (Vector2){0, 0}, 0.0f, (Color){255, 255, 255, 60});
-    DrawRectangleLinesEx(credits_dest, 3, BLACK);
-
-    const char *credits_label = "CREDITS";
-    Vector2 credits_label_size = MeasureTextEx(font.determination, credits_label, label_font_size, label_spacing);
-    draw_text_outlined(
-        font.determination, credits_label,
-        (Vector2){credits_dest.x + btn_w / 2.0f, credits_dest.y + btn_h / 2.0f},
-        (Vector2){credits_label_size.x / 2.0f, credits_label_size.y / 2.0f},
-        label_font_size, label_spacing, WHITE, BLACK, 1.5f
-    );
 
     // Player name + edit icon (top-center)
     float name_font_size = 30.0f, name_spacing = 1.5f;
     char name_display[40];
-    snprintf(name_display, sizeof(name_display), "PLAYER: %s", player_name);
+    snprintf(name_display, sizeof(name_display), "%s", player_name);
     Vector2 name_size = MeasureTextEx(font.determination, name_display, name_font_size, name_spacing);
 
-    float edit_scale = 0.12f; // edit-user.png is a large square icon, scaled down for inline use
+    float edit_scale = 0.22f; // edit-user.png is a large square icon, scaled down for inline use
     float edit_w = assets.edit_user.width * edit_scale;
     float edit_h = assets.edit_user.height * edit_scale;
 
     float cluster_gap = 14.0f;
     float cluster_w = name_size.x + cluster_gap + edit_w;
-    float cluster_x = WIDTH / 2.0f - cluster_w / 2.0f;
+    // float cluster_x = WIDTH / 2.0f - cluster_w / 2.0f;
+    float cluster_x = 23.0f;
     float cluster_y = 20.0f;
 
     draw_text_outlined(
@@ -1590,6 +1578,21 @@ void draw_menu_extra_ui(int *start_game) {
     Rectangle edit_dest = {cluster_x + name_size.x + cluster_gap, cluster_y, edit_w, edit_h};
     int edit_clicked = 0;
     button(&edit_clicked, assets.edit_user, (Rectangle){0, 0, assets.edit_user.width, assets.edit_user.height}, edit_dest, (Vector2){0, 0}, 0.0f, (Color){200, 200, 200, 150});
+    start_y += edit_h + gap;
+
+
+    // HOW TO PLAY button
+    Rectangle howto_dest = {start_x, start_y, btn_htp_w, btn_htp_h};
+    int howto_clicked = 0;
+    button(&howto_clicked, assets.how_to_play_btn, (Rectangle){0, 0, assets.how_to_play_btn.width, assets.how_to_play_btn.height}, howto_dest, (Vector2){0, 0}, 0.0f, (Color){200, 200, 200, 150});
+    start_y += howto_dest.height + gap;
+
+
+    // CREDITS button (below How To Play)
+    Rectangle credits_dest = {start_x, start_y, btn_credit_w, btn_credit_h};
+    int credits_clicked = 0;
+    button(&credits_clicked, assets.credits_btn, (Rectangle){0, 0, assets.credits_btn.width, assets.credits_btn.height}, credits_dest, (Vector2){0, 0}, 0.0f, (Color){200, 200, 200, 150});
+
 
     // Prevent the game from starting when clicking any of this UI
     if (CheckCollisionPointRec(mouse_position, howto_dest) ||
@@ -1603,7 +1606,7 @@ void draw_menu_extra_ui(int *start_game) {
     } else if (credits_clicked) {
         gamestate = STATE_CREDITS;
     } else if (edit_clicked) {
-        gamestate = STATE_NAME_ENTRY; // pre-filled with the current name, ready to edit
+        gamestate = STATE_NAME_ENTRY;
     }
 }
 
