@@ -1,7 +1,7 @@
 main.exe
 test.c
 test.exe
-.exe
+*.exe
 .vscode
 raylib_template.code-workspace
 desktop.ini
