@@ -22,8 +22,8 @@ const float pipe_vertical_distance = 200; // how much distance pipes are apart v
 const float pipe_horizontal_distance = 400; // how much distance pipes are apart horizontally
 const float flap_velocity = -450 ; // upward. That's why -ve
 float game_speed = 300; // pipe speed. 
-float background_speed = 70; // for parallex effect
 float difficulty = 2.1; // how much to increase after erach score
+
 
 // THIS AREA DEALS WITH VARIABLE THAT NEEDS TO BE PASS IN EVERY FUNCTION
 float dt = 0; // I hate passing it to every function
@@ -103,6 +103,8 @@ typedef struct
     Sound death;
     Sound point;
     Sound hit;
+
+    // music
     Music bg;
 } Sfx;
 
@@ -189,6 +191,7 @@ void draw_name_entry(int score);
 
 void draw_text_outlined(Font font, const char *text, Vector2 position, Vector2 origin, float fontSize, float spacing, Color textColor, Color outlineColor, float outlineThickness);
 void button(int *button_tracker, Texture2D tex, Rectangle source, Rectangle dest, Vector2 origin, float rotation, Color hover_tint);
+void play_sound_pitch_variation(Sound sfx, float variation);
 
 int main(){
     InitWindow(WIDTH, HEIGHT, "Flappy Bird");
@@ -856,8 +859,9 @@ void init_pipes(Pipe pipes[], int total_pipes){
 
 void draw_background(void){
     /*
-        draws backgground. If animate is on, meves background to left.
+        draws background. If animate is on, meves background to left.
     */
+    static float background_speed = 70; // for parallex effect
     static float backgroung_position = 0; // for parallex
 
     Texture2D background = assets.background[current_assets.background];
@@ -1006,7 +1010,7 @@ void update_velocity(float *velocity, float dt){
         *velocity += gravity * dt;
     }
     else{
-        if (sound_on) PlaySound(sfx.flap);
+        if (sound_on) play_sound_pitch_variation(sfx.flap, 0.15);
         bird_rotation = -30;
         *velocity = flap_velocity;
     }
@@ -1093,7 +1097,7 @@ void update_score(int *score, float bird_x, int total_pipes, Pipe pipes[]){
             *score += 1;
             pipes[i].passed = 1;
             game_speed += difficulty;
-            if (sound_on) PlaySound(sfx.point);
+            if (sound_on) play_sound_pitch_variation(sfx.point, 0.10);
         }
     }
 }
@@ -1200,7 +1204,7 @@ int check_death(float pos_x, float pos_y, Pipe pipes[], int total_pipes){
             break;
         }
     }
-    if (sound_on) if (death) PlaySound(sfx.death);
+    if (sound_on) if (death) play_sound_pitch_variation(sfx.death, 0.15);
     
     return death;
 }
@@ -1438,4 +1442,18 @@ void draw_countdown(int count) {
         BLACK, 
         4.0f
     );
+}
+
+
+void play_sound_pitch_variation(Sound sfx, float variation) {
+    // varies pitch that makes repetative sound less annoying
+    int range = (int)(variation * 1000.0f);
+    int offset = GetRandomValue(-range, range);
+
+    float pitch = 1.0f + ((float)offset / 1000.0f);
+
+    if (pitch < 0.1f) pitch = 0.1f;
+
+    SetSoundPitch(sfx, pitch);
+    PlaySound(sfx);
 }
