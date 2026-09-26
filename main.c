@@ -234,9 +234,8 @@ int main(){
         {
             UpdateMusicStream(sfx.bg);
 
-            if (!IsMusicStreamPlaying(sfx.bg))
-            {
-            PlayMusicStream(sfx.bg);
+            if (!IsMusicStreamPlaying(sfx.bg)) {
+                PlayMusicStream(sfx.bg);
             }
         }
         else
@@ -892,8 +891,8 @@ void draw_ground(void){
     /*
         draws and moves ground. ground velocity is same as pipe velocity
     */
-   static float base_poition = 0; // for parallex
-   
+    static float base_poition = 0; // for parallex
+
     Texture2D ground = assets.ground[current_assets.ground];
     float width = ground.width;
     float height = ground.height;
