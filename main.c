@@ -151,10 +151,10 @@ FontList font;
 CurrentAssets current_assets;
 GameState gamestate = STATE_MENU;
 
-LeaderboardEntry leaderboard[MAX_LEADERBOARD]; // top scorers, sorted descending by score
-int leaderboard_count = 0;                     // how many entries are currently filled in
+LeaderboardEntry leaderboard[MAX_LEADERBOARD]; 
+int leaderboard_count = 0;                     
 
-char player_name[MAX_NAME_LEN] = "";           // name being typed on the name-entry screen
+char player_name[MAX_NAME_LEN] = "";
 int name_length = 0;
 
 void show_fps(void);
@@ -228,7 +228,7 @@ int main(){
     // THIS AREA HOLDS VARIABLES FOR BIRD
     float pos_x = WIDTH * 0.212;
     float pos_y = HEIGHT/2;
-    float velocity = -400; // bird upward or downward velocity
+    float velocity = flap_velocity; // bird upward or downward velocity
 
     int score =  0; // current score
 
@@ -262,6 +262,7 @@ int main(){
         }       
 
         if (gamestate == STATE_MENU) {
+            if (animate == 0) animate = 1;
             draw_background();
             draw_ground();
             menu();
@@ -393,6 +394,7 @@ int main(){
         }
 
         else if (gamestate == STATE_CREDITS){
+            if (animate == 1) animate = 0;
             draw_background();
             draw_ground();
 
@@ -414,13 +416,14 @@ int main(){
                 (Vector2){assets.exit_ui.width * scale.exit_ui.x/2.0f, assets.exit_ui.height * scale.exit_ui.y/2.0f},
                 0.0f,
                 (Color){100, 100, 100, 100}
-            ); // <-- exit.png (assets.exit_ui) button #1: closes the CREDITS panel, back to STATE_MENU
+            );
             if (exit_pressed){
                 gamestate = STATE_MENU;
             }
         }
 
         else if (gamestate == STATE_HOW_TO_PLAY){
+            if (animate == 1) animate = 0;
             draw_background();
             draw_ground();
 
@@ -746,10 +749,9 @@ void draw_leaderboard(int start_y){
     const float spacing = 1.5f;
     const int row_height = 40;
     
-    // Define how wide the leaderboard should spread out
-    const float table_width = 400.0f; 
+    const float table_width = 400.0f; // how wide the leaderboard should spread out
 
-    const char *title = "TOP 5";
+    const char *title = "HALL OF FAME";
     Vector2 title_size = MeasureTextEx(font.determination, title, title_font_size, spacing);
     draw_text_outlined(
         font.determination, title,
@@ -1006,7 +1008,7 @@ Scale set_scales(void){
 
         .exit_ui = {0.5f, 0.5f},
         .ui_icon = {0.4f, 0.4f},  // all ui have same scale
-        .info_ui = {0.22 , 0.26},
+        .info_ui = {0.26 , 0.26},
         .pause_icon = {0.33f, 0.33f},
         .play_icon = {1.5f, 1.5f}
     };
@@ -1648,7 +1650,7 @@ void draw_customization(void) {
     draw_text_outlined(font.determination, "PIPE STYLE", (Vector2){WIDTH/2 - MeasureTextEx(font.determination, "PIPE STYLE", font_size, text_spacing).x/2 , pipe_y - text_offset}, (Vector2){0.0f, 0.0f}, font_size, text_spacing, text_color, outline_color, outline_thickness);
     draw_text_outlined(font.determination, "BACKGROUND", (Vector2){WIDTH/2 - MeasureTextEx(font.determination, "BACKGROUND", font_size, text_spacing).x/2 , bg_y - text_offset}, (Vector2){0.0f, 0.0f}, font_size, text_spacing, text_color, outline_color, outline_thickness);
 
-    float lerp_speed = 12.0f; // does what it says. creates a no linier animation
+    float lerp_speed = 12.0f; // does what it says. creates a non linier animation
     anim_bird_x += ((start_x_bird + current_assets.bird * spacing) - anim_bird_x) * lerp_speed * dt;
     anim_pipe_x += ((start_x_pipe + current_assets.pipe * spacing) - anim_pipe_x) * lerp_speed * dt;
     anim_bg_x += ((start_x_bg + current_assets.background * spacing) - anim_bg_x) * lerp_speed * dt;
